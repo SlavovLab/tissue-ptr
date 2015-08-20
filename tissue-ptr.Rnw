@@ -3,12 +3,13 @@
 \usepackage{mathtools}
 \usepackage{chemarrow}
 \usepackage{subcaption}
+\usepackage{rotating}
 \usepackage[margin=.5in]{geometry}
 
 \begin{document}
 
 \title{Data Analysis}
-\author{Alexander Franks}
+\author{Alexander Franks and Nikolai Slavov}
 \date{\today}
 \maketitle
 
@@ -17,7 +18,7 @@ Introduction to analysis.
 \tableofcontents
 \newpage
 
-<<results='hide',echo=FALSE,warning=FALSE,message=FALSE,label=initialize,cache=TRUE>>=
+<<results='hide',echo=FALSE,warning=FALSE,message=FALSE,label=initialize,cache=FALSE>>=
 
     options(stringsAsFactors=FALSE)
 opts_chunk$set(cache.path = 'cache/',fig.path = 'Figs/')
@@ -61,7 +62,7 @@ prediction.ratios <- log10((10^protein)/((10^mrna)*median.ratios))
 predicted.raw <- (10^mrna)*median.ratios
 @
 
-\section*{Figure 1}
+
 
 <<results='hide', fig.show='hide',label=figure-1,dependson=c("initialize"),echo=FALSE,warning=FALSE>>=
 
@@ -162,7 +163,6 @@ dev.off()
 \label{fig:test}
 \end{figure}
   
-\section*{Figure 2}
 
 <<results='hide', fig.show='hide',label=figure-2,dependson=c("initialize"),echo=FALSE,warning=FALSE>>=
 
@@ -268,9 +268,7 @@ dev.off()
 \label{fig:test}
 \end{figure}
 
-\section*{Figure 5}
-
-<<fig.show='hide',label=figure-5, dependson("initialize"),echo=FALSE,warning=FALSE>>=
+<<results='hide',fig.show='hide',label=figure-5, dependson("initialize"),echo=FALSE,warning=FALSE>>=
 
 n.prot <- rowSums(!is.na(protein))
 sd.prot.err <- uniroot(function(x) pnorm(log10(1.5),mean=0,sd=x)-0.75,lower=0,upper=10)$root
@@ -389,47 +387,47 @@ p2.cors <- sapply(prows,function(i) cor(protein2[i,pcols],mrna[i,pcols],use="pai
 med.p2 <- median(p2.cors,na.rm=TRUE)
 print(med.p2)
 
-tmp <- sapply(prows,function(i) cor((protein[i,pcols]+protein2[i,pcols])/2,mrna[i,pcols],use="pairwise.complete.obs"))
+tmp <- sapply(prows,function(i) cor(protein2[i,pcols],mrna[i,pcols],use="pairwise.complete.obs"))
+tmp <- tmp[tmp!=1&tmp!=-1&!is.na(tmp)]
 
+## Estimated reliabilities
 p1.reliability <- med.prot*pop.cor/med.p2
 p2.reliability <- med.prot*med.p2/pop.cor
 
 
-## TODO: FIGURE
 
 @ 
 
-Reliability of \Sexpr{focus.data} is: \Sexpr{p1.reliability}\\
-Reliability of \Sexpr{data2} is: \Sexpr{p2.reliability}
-
+\noindent Reliability of \Sexpr{focus.data} is: \Sexpr{format(p1.reliability,digits=2,nsmall=2)}\\
+Reliability of \Sexpr{data2} is: \Sexpr{format(p2.reliability,digits=2,nsmall=2)}
 
 \begin{figure}
 \centering
 \begin{subfigure}{.3\textwidth}
   \centering
   \includegraphics[width=\textwidth]{\string Figs/mrna_reliabilities.pdf}
-  \caption{mRNA reliability = \Sexpr{med.mrna}}
+  \caption{mRNA reliability = \Sexpr{round(med.mrna,2)}}
   \label{fig:sub1}
 \end{subfigure}%
 \begin{subfigure}{.3\textwidth}
   \centering
   \includegraphics[width=\textwidth]{\string Figs/protein_reliabilities.pdf}
-  \caption{Protein reliability = \Sexpr{med.prot}}
+  \caption{Protein reliability = \Sexpr{round(med.prot,2)}}
   \label{fig:sub2}
 \end{subfigure}
 \begin{subfigure}{.3\textwidth}
   \centering
   \includegraphics[width=\textwidth]{\string Figs/5e-noise-correction.pdf}
-  \caption{A subfigure}
+  \caption{}
   \label{fig:sub2}
 \end{subfigure}
-\caption{Noise corrected correlation = \Sexpr{pop.cor/sqrt(med.mrna*med.prot)}}
+\caption{Noise corrected correlation = \Sexpr{round(pop.cor/sqrt(med.mrna*med.prot),2)}}
 \label{fig:test}
 \end{figure}
 
 
 \section*{Figures S1}
-<<fig.show='hide',label=figure-s1, dependson("initialize"),echo=FALSE,warning=FALSE>>=
+<<fig.show='hide',label=figure-s1, dependson("initialize"),echo=FALSE,warning=FALSE, results='hide'>>=
 
 ## noise corrected 
 sd.mrnas <- apply(mrna, 1, function(x) sd(x,na.rm=TRUE))
@@ -484,201 +482,50 @@ median(sd.prots.corrected/sd.mrnas.corrected,na.rm=TRUE)
 \label{fig:test}
 \end{figure}
 
-\section*{Figure S2}
+<<results='asis',fig.show='hide',label=associations-1, dependson("initialize"),echo=FALSE,warning=FALSE>>=
 
-<<results='hide',fig.show='hide', label=figure-slope,dependson=c("initialize"),echo=FALSE,warning=FALSE>>=
-slps <- c()
-for(i in rownames(protein)){
-    p <- protein[i,]
-    m <- mrna[i,]
-    notna <- which(!is.na(p*m))
-    if(length(notna) > 5) {
-        slps <- rbind(slps,lmodel2(p~m,range.x="interval",range.y="interval",nperm=1)$regression.results$Slope)
+load("associations.RData")
+allGroups <- unique(unlist(getGroupsForProtein(rownames(protein),ensembl=TRUE)))
+glen <- sapply(group2proteins,function(x) length(unlist(x)))
+
+pvals <- rep(NA,length(allGroups))
+med.z <- rep(NA,length(allGroups))
+med.cor <- rep(NA,length(allGroups))
+med.sd.mrna <- med.sd.prot <- rep(NA,length(allGroups))
+                                  
+names(pvals) <- names(med.z) <- names(med.cor) <- names(med.sd.mrna) <- names(med.sd.prot) <- allGroups
+
+for(grp in allGroups) {
+    prots <- intersect(n2e(group2proteins[[grp]]),names(z.score))
+    if(length(prots)>5 & length(prots) < 200 ) {
+        res <- ks.test(z.score[prots],z.score[setdiff(names(z.score),prots)])
+        pvals[grp] <- res$p.value
+        med.z[grp] <- median(z.score[prots],na.rm=TRUE)
+        med.cor[grp] <- median(within.cors[prots],na.rm=TRUE)
+        med.sd.mrna[grp] <- median(sd.mrnas[prots],na.rm=TRUE)
+        med.sd.prot[grp] <- median(sd.prots[prots],na.rm=TRUE)
     }
 }
-colnames(slps) <- c("OLS","MA","SMA","RMA")
+pvals <- pvals[!is.na(pvals)]
+sorted.pvals <- sort(pvals)
+M <- length(sorted.pvals)
+out <- fdrtool(pvals,"pvalue")
+qvals <- sorted.pvals/((1:M)/M)
+qvals <- qvals[qvals<fdr.thresh]
 
-protein.vec <- as.numeric(t(protein-apply(protein,1,function(x) median(x,na.rm=TRUE))))
-mrna.vec <- as.numeric(t(mrna-apply(mrna,1,function(x) median(x,na.rm=TRUE))))
-plot(mrna.vec,protein.vec,pch=19,cex=0.1)
-abline(a=0,b=1)
+med.z <- med.z[names(qvals)]
+med.cor <- med.cor[names(qvals)]
+med.sd.mrna <- med.sd.mrna[names(qvals)]
+med.sd.prot <- med.sd.prot[names(qvals)]
 
-@ 
+nms <- sapply(names(qvals),function(x) substr(go.names[match(x,go.names[,1]),3],1,30))
 
+atable <- data.frame(Name=nms,"Median Z-Score"=med.z,"Median Correlation"=med.cor,"Median mRNA SD"=med.sd.mrna,"Median protein SD"=med.sd.prot,"Q-value"=qvals,"P-value"=sorted.pvals[names(nms)],"Number of Genes"=glen[names(nms)])
+colnames(atable) <- c("Name","Median Z-Score","Median Correlation","Median mRNA SD","Median Protein SD","Q-value","P-value","Numer of Genes")
 
+xtab <- xtable(atable[order(atable[,3]),c(1:3,6:8)],display=c("s","s","f","f","g","g","d"),digits=c(0,0,2,2,2,2,2))
 
-
-
-%% \section*{Figure X}
-
-%% <<results='hide',fig.height=8,fig.width=12, label=figure-X,dependson=c("initialize"),echo=FALSE,warning=FALSE>>=
-
-%%     grid.newpage()
-%% pushViewport(viewport(layout = grid.layout(2,3)))
-
-%% fold.comparison.tissues <- c("prostate","kidney","thyroid.gland")
-%% fold.combos <- combn(fold.comparison.tissues,2)
-
-%% for(i in 1:ncol(fold.combos)){
-
-%%     t1 <- fold.combos[1,i]
-%%     t2 <- fold.combos[2,i]
-
-%%     pred <- log10(tissue.ratios[,t2]*10^mrna[,t1])
-%%     raw <- protein[,t1]
-%%     keep <- which(pred!=raw)
-%%     pred <- pred[keep]
-%%     raw <- raw[keep]
-%%     cor.raw <- cor(pred,raw,use="complete.obs")^2
-    
-%% print(
-%%         ggplot(data=data.frame(mrna=pred,protein=raw))+geom_point(aes(x=mrna,y=protein),colour="blue",alpha=0.3)+
-%%         scale_x_continuous(breaks=1:10,labels=function(x) parse(text=paste("10^", x)),limits=c(2,8))+
-%%         scale_y_continuous(breaks=1:10,labels=function(x) parse(text=paste("10^", x)),limits=c(2,8))+
-%%         labs(x=sprintf("%s mRNA scaled by %s PTR",strFormat(t1),strFormat(t2)),
-%%              y=sprintf("Measured protein in %s",strFormat(t1)))+
-%%         annotate("text", x = 3, y = 7.5,label=as.character(as.expression(substitute(italic(R)~"="~r,list(r=format(cor.raw,digits=2))))),parse=TRUE,size=10)+
-%%         annotate("text", x = 3, y = 7,label=as.character(as.expression(substitute(italic(R)^2~"="~r2,list(r2=format(cor.raw^2,digits=2))))),parse=TRUE,size=10)+
-%%         theme(axis.title.x = element_text(face="bold",size=22),
-%%           axis.text.x  = element_text(size=30),
-%%           axis.title.y = element_text(face="bold",size=30),
-%%               axis.text.y  = element_text(size=30,hjust=0)),
-%%     vp=viewport(layout.pos.row=1,layout.pos.col=i)
-%%     )
-
-%% }
-
-%% for(i in 1:ncol(fold.combos)){
-
-%%     t1 <- fold.combos[1,i]
-%%     t2 <- fold.combos[2,i]
-
-%%     fold.cor <- cor(mrna[,t1]-mrna[,t2],protein[,t1]-protein[,t2],use="complete.obs")
-
-%%     print(
-%%         ggplot(data=data.frame(mrna=10^(mrna[,t1]-mrna[,t2]),protein=10^(protein[,t1]-protein[,t2])))+geom_point(aes(x=mrna,y=protein),colour="blue",alpha=0.3)+
-%%     scale_x_log10(breaks=10^(-2:2),label=scientific_10,limits=c(10^-2,10^2))+
-%%     scale_y_log10(breaks=10^(-3:3),labels=scientific_10,limits=c(10^-3,10^3))+
-%%     labs(x="mRNA Fold Change",y="Protein Fold Change")+
-%%     annotate("text", x = 10^-1.2, y = 10^2.5,label=as.character(as.expression(substitute(italic(R)~"="~r,list(r=round(fold.cor,digits=3))))),parse=TRUE,size=10)+
-%%     annotate("text", x = 10^-1.2, y = 10^2,label=as.character(as.expression(substitute(italic(R)^2~"="~r2,list(r2=round(fold.cor^2,digits=3))))),parse=TRUE,size=10)+
-%%     theme(axis.title.x = element_text(face="bold",size=30),
-%%           axis.text.x  = element_text(size=30),
-%%           axis.title.y = element_text(face="bold",size=30),
-%%           axis.text.y  = element_text(size=30,hjust=0)),
-%%         vp=viewport(layout.pos.row=2,layout.pos.col=i)        
-%%  )
-    
-    
-    
-    
-%% }
-%% @ 
-
-\section*{Figure 3}
-<<results='hide',fig.show='hide',label=figure-3,dependson=c("initialize"),echo=FALSE,warning=FALSE>>=
-
-par(mfrow=c(1,2))
-
-cors.mat <- matrix(0,nrow=n.tissues,ncol=n.tissues)
-rownames(cors.mat) <- colnames(cors.mat) <- tissue.names
-combinations <- combn(tissue.names,2)
-for(i in 1:ncol(combinations)){
-
-    t1 <- combinations[1,i]
-    t2 <- combinations[2,i]
-    
-    cr <- cor(mrna[,t1]-mrna[,t2],protein[,t1]-protein[,t2],use="pairwise.complete.obs")
-    print(cr)
-    
-    cors.mat[combinations[1,i],combinations[2,i]] <- cors.mat[combinations[2,i],combinations[1,i]] <- cr
-
-}
-rownames(cors.mat) <- colnames(cors.mat) <- sapply(rownames(cors.mat),strFormat)
-
-### Correlation Matrix Plot For Fold Changes
-col.pal <- colorRampPalette(c("#7F0000","red","#FF7F00","yellow","#7FFF7F", 
-                             "cyan", "#007FFF", "blue","#00007F"))
-
-corrplot(cors.mat, method = "number",cl.lim=c(0,.6),col=col.pal(100),diag=FALSE,tl.col="black",tl.cex=1.5,cl.cex=1.2,cl.align.text="l",mar=c(5,0,0,0))
-
-
-max.errors <- apply(prediction.ratios,1,function(x) max(abs(x),na.rm=TRUE))
-mean.protein <- apply(protein,1,mean)[max.errors!=-Inf]
-max.errors <- max.errors[max.errors!=-Inf]
-
-cdf2 <- ecdf(max.errors)
-par(mar=c(5.1,5.1,4.1,2.1))
-
-plot(function(x) cdf2(x),xlab="Fold Error",ylab="Fraction of Genes",xlim=c(0,2),ylim=c(0.02,1),main="",lwd=3,panel.first=grid(nx=8,lwd=2),yaxt="n",xaxt="n",cex.lab=2,font.lab=2)
-
-axis(1,cex.axis=1.5,labels=parse(text=paste("10^",seq(0,2,by=0.5))),at=seq(0,2,by=0.5))
-axis(2,cex.axis=1.5)
-segments(x0=1,y=0,x1=1,y1=cdf2(1),col="red",lwd=3,lty=2)
-segments(x0=-.5,y=cdf2(1),x1=1,y1=cdf2(1),col="red",lwd=3,lty=2)
-segments(x0=log10(2),y=0,x1=log10(2),y1=cdf2(log10(2)),col="blue",lwd=3,lty=2)
-segments(x0=-.5,y=cdf2(log10(2)),x1=log10(2),y1=cdf2(log10(2)),col="blue",lwd=3,lty=2)
-
-## Fraction exceeding 2 fold error
-frac2 <- round(1-cdf2(log10(2)),digits=2)
-## Number of proteins
-n2 <- ceiling(frac2*length(max.errors))
-
-## Fraction exceeding 10 fold error
-frac10 <- round(1-cdf2(1),digits=2)
-## Number of proteins 
-n10 <- ceiling(frac10*length(max.errors))
-
-@ 
-
-\Sexpr{100*frac2} percent of protein (\Sexpr{n2} of
-\Sexpr{nrow(protein)}) have a maximum error exceeding two-fold.
-\Sexpr{100*frac10} percent of protein (\Sexpr{n10} of
-\Sexpr{nrow(protein)}) have a maximum error exceeding ten-fold.
-
-<<fig.width=6,fig.height=6,fig.align='center',label=figure-S2,dependson=("initalize"),echo=FALSE,warning=FALSE,>>=
-
-median.mrna <- median(as.vector(mrna),na.rm=TRUE)
-te.mean <- apply(protein-mrna,1,function(x) median(x,na.rm=TRUE))
-
-vgrid <- seq(0,0.5,by=0.01)
-rsqgrid <- numeric(length(vgrid))
-median.tissue.cor <- cors.full <- c()
-count <- 1
-for(vte in vgrid){
-
-    efficiency_mat <- matrix(rnorm(n.genes*n.tissues,mean=rep(te.mean,n.tissues),sd=sqrt(vte)),ncol=n.tissues,nrow=nrow(protein))
-
-    protein_mat <- mrna+efficiency_mat
-    predicted.protein <- mrna+apply(efficiency_mat,1,median)
-
-    keep <- !apply(protein_mat,1,function(x) all(is.na(x)))
-    protein_mat <- protein_mat[keep,]
-    predicted.protein <- predicted.protein[keep,]
-
-    median.prot <- median(as.vector(protein_mat),na.rm=TRUE)
-    half.indices <- protein_mat>median.prot
-
-    cors.full <- c(cors.full,cor(as.vector(predicted.protein),as.vector(protein_mat),use="complete.obs"))
-
-    median.tissue.cor <- c(median.tissue.cor,median(sapply(1:nrow(protein_mat),function(i) cor(predicted.protein[i,],protein_mat[i,],use="complete.obs")),na.rm=TRUE))
-
-    rsqgrid[count] <- median(vte/apply(protein_mat,2,function(x) var(x,na.rm=TRUE)))
-    count <- count+1
-}
-
-
-par(mar=c(6, 5.5, 4, 2))
-plot(rsqgrid,cors.full^2,type="l",col="red",sub=expression(paste("Frac. of Unexplained Total Var., 1 - ",R[T]^2, "")),xlab="",ylab=expression(paste("R-Squared (",R^2,")")),font.axis=2,lwd=3,cex.lab=2,cex.sub=2,font.lab=2,font.axis=2,cex.axis=2,ylim=c(0,1),xlim=c(0,0.3))
-
-real.frac <- median(apply(protein-mrna,1,function(x) var(x,na.rm=TRUE)),na.rm=TRUE)/apply(protein,2,function(x) var(x,na.rm=TRUE))
-rect(min(real.frac), -1, max(real.frac), 2, density = NULL, col = "light grey",border=NA)
-
-lines(rsqgrid,cors.full^2,col="red",lwd=3)
-lines(rsqgrid,median.tissue.cor^2,lwd=3,cex.lab=2,font.lab=2,font.axis=2,cex.axis=1.5,col="blue",lty=2)
-
-text(.25,0.85,c(expression(paste("",R[T]^2))),col="red",cex=2)
-text(.25,.25,c(expression(paste("",R[P]^2))),col="blue",,cex=2)
+print(xtab,type='latex',floating.environment = 'sidewaystable',hline.after=c(0,nrow(atable)-sum(med.cor>pop.cor)))
 
 @ 
 
