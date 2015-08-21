@@ -484,6 +484,8 @@ median(sd.prots.corrected/sd.mrnas.corrected,na.rm=TRUE)
 
 <<results='asis',fig.show='hide',label=associations-1, dependson("initialize"),echo=FALSE,warning=FALSE>>=
 
+fdr.thresh <- 0.02
+
 load("associations.RData")
 allGroups <- unique(unlist(getGroupsForProtein(rownames(protein),ensembl=TRUE)))
 glen <- sapply(group2proteins,function(x) length(unlist(x)))
@@ -520,14 +522,28 @@ med.sd.prot <- med.sd.prot[names(qvals)]
 
 nms <- sapply(names(qvals),function(x) substr(go.names[match(x,go.names[,1]),3],1,30))
 
-atable <- data.frame(Name=nms,"Median Z-Score"=med.z,"Median Correlation"=med.cor,"Median mRNA SD"=med.sd.mrna,"Median protein SD"=med.sd.prot,"Q-value"=qvals,"P-value"=sorted.pvals[names(nms)],"Number of Genes"=glen[names(nms)])
+atable <- data.frame(Name=as.factor(nms),"Median Z-Score"=med.z,"Median Correlation"=med.cor,"Median mRNA SD"=med.sd.mrna,"Median protein SD"=med.sd.prot,"Q-value"=qvals,"P-value"=sorted.pvals[names(nms)],"Number of Genes"=glen[names(nms)])
 colnames(atable) <- c("Name","Median Z-Score","Median Correlation","Median mRNA SD","Median Protein SD","Q-value","P-value","Numer of Genes")
 
 xtab <- xtable(atable[order(atable[,3]),c(1:3,6:8)],display=c("s","s","f","f","g","g","d"),digits=c(0,0,2,2,2,2,2))
 
 print(xtab,type='latex',floating.environment = 'sidewaystable',hline.after=c(0,nrow(atable)-sum(med.cor>pop.cor)))
 
+
+## cors.tmp <- cat.tmp <- c()
+## for(grp in names(nms)) {
+##     prots <- intersect(n2e(group2proteins[[grp]]),names(out$z.score))
+##     cors.tmp <- c(cors.tmp,out$within.cors[prots])
+##     cat.tmp <- c(cat.tmp,rep(grp,length(prots)))
+## }
+## cors.tmp <- c(cors.tmp,out$within.cors)
+## cat.tmp <- c(cat.tmp,rep("All",length(out$within.cors)))
+## df <- data.frame(list(cors=cors.tmp,cat=factor(cat.tmp,levels=unique(cat.tmp),ordered=TRUE)))
+
+## ggplot(atable, aes(x = Name, y = Median.Correlation))+geom_hline(yintercept=0.28,colour="red",lwd=1.5) + geom_boxplot(aes(x=Name,y=Median.Correlation),outlier.size=0)
+
 @ 
+
 
 
 \end{document}
