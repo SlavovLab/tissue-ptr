@@ -530,21 +530,33 @@ xtab <- xtable(atable[order(atable[,3]),c(1:3,6:8)],display=c("s","s","f","f","g
 print(xtab,type='latex',floating.environment = 'sidewaystable',hline.after=c(0,nrow(atable)-sum(med.cor>pop.cor)))
 
 
-## cors.tmp <- cat.tmp <- c()
-## for(grp in names(nms)) {
-##     prots <- intersect(n2e(group2proteins[[grp]]),names(out$z.score))
-##     cors.tmp <- c(cors.tmp,out$within.cors[prots])
-##     cat.tmp <- c(cat.tmp,rep(grp,length(prots)))
-## }
-## cors.tmp <- c(cors.tmp,out$within.cors)
-## cat.tmp <- c(cat.tmp,rep("All",length(out$within.cors)))
-## df <- data.frame(list(cors=cors.tmp,cat=factor(cat.tmp,levels=unique(cat.tmp),ordered=TRUE)))
+cors.tmp <- cat.tmp <- c()
 
-## ggplot(atable, aes(x = Name, y = Median.Correlation))+geom_hline(yintercept=0.28,colour="red",lwd=1.5) + geom_boxplot(aes(x=Name,y=Median.Correlation),outlier.size=0)
+## show just a sample of the groups
+toinclude <- names(med.cor)[c(sort(sample(which(med.cor<pop.cor),3)),which(med.cor>pop.cor))]
+
+for(grp in toinclude) {
+     prots <- intersect(n2e(group2proteins[[grp]]),names(z.score))
+     cors.tmp <- c(cors.tmp,within.cors[prots])
+     cat.tmp <- c(cat.tmp,nms[rep(grp,length(prots))])
+}
+
+df <- data.frame(list(cors=cors.tmp,cat=factor(cat.tmp,levels=unique(cat.tmp),ordered=TRUE)))
+
+pdf("Figs/go_corrs.pdf",width=10,height=5)
+print(
+    ggplot(df, aes(x = cat, y = cors))+geom_hline(yintercept=0.28,colour="red",lwd=1.5) + geom_boxplot(aes(x=cat,y=cors),outlier.size=0)+labs(x="",y="Correlation")+theme(axis.text.x = element_text(angle = 45,hjust=1))
+)
+dev.off()
 
 @ 
 
-
+\begin{figure}
+\centering
+  \includegraphics[width=0.5\textwidth]{\string Figs/go_corrs.pdf}
+  \caption{A subfigure}
+  \label{fig:sub1}
+\end{figure}
 
 \end{document}
 
