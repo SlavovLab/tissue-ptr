@@ -4,7 +4,7 @@ protein <- as.matrix(read.csv("protein.csv",row.names=1))
 tab.mart <- read.csv("mart_export.txt",header=TRUE,stringsAsFactors=FALSE)
 tab.mart <- tab.mart[!duplicated(tab.mart[,1]),]
 rownames(tab.mart) <- tab.mart[,1]
-tab.mart <- tab.mart[rownames(protein),]
+tab.mart <- tab.mart[rownames(protein), ]
 go.names <- read.table("Go_names",comment.char="!",sep="\t",stringsAsFactors=FALSE,quote = "")
 rownames(go.names) <- go.names[,1]
 
@@ -66,14 +66,16 @@ generate_csvs <- function(directory) {
 
 ########### load protein data from Wilhelm et al and Kim et al #############
 
-    protein_datasets <- c("Kim","Wilhelm")
+    protein_datasets <- c("Kim", "Wilhelm")
     for(nm in protein_datasets) {
 
         protein.cur <- matrix(ncol=1)
         colnames(protein.cur) <- "Gene.names"
-        tissues <- c("adrenal.gland","esophagus","testis","kidney","ovary","pancreas","prostate","liver","uterus","stomach","thryoid.gland","salivary.gland","spleen")
+        tissues <- c("adrenal.gland", "esophagus", "testis", "kidney", "ovary", "pancreas", "prostate",
+                     "liver", "uterus", "stomach", "thryoid.gland", "salivary.gland", "spleen", "colon",
+                     "heart", "lung")
         for(tissue in tissues){
-            fname <- sprintf("%s_Search_Results_Data/%s_proteinGroups.txt",nm,tissue)
+            fname <- sprintf("~/Dropbox/NatureCommentData/%s_Search_Results_Data/%s_proteinGroups.txt",nm, tissue)
             if(file.exists(fname)) {
                 tissue.tab <- read.table(fname,stringsAsFactors=FALSE,sep="\t",header=TRUE)
                 tissue.tab <- tissue.tab[,c("Gene.names","iBAQ")]
@@ -89,7 +91,7 @@ generate_csvs <- function(directory) {
             x
             
             split.lst <- strsplit(x,";")
-            elst <- sapply(split.lst,n2e)
+            elst <- sapply(split.lst, n2e)
 
             if(all(is.na(elst))) {
                 NA
@@ -114,7 +116,8 @@ generate_csvs <- function(directory) {
             protein.cur[,tissue] <- protein.cur[,tissue]+median(protein.cur[,norm.tissue]-protein.cur[,tissue],na.rm=TRUE)
         }
 
-        write.csv(protein.cur,file=sprintf("%s/protein_%s.csv",directory,nm),quote=FALSE)
+        write.csv(protein.cur,file=sprintf("%s/protein_%s.csv", directory, nm),
+                  quote=FALSE)
 
     }
 
@@ -195,16 +198,31 @@ fisher.transform <- function(r){ 1/2*log((1+r)/(1-r)) }
 
 getZscores <- function(mat1, mat2, min.pairs=4){
 
-    sd.mat1 <- apply(mat1,1,function(x) sd(x,na.rm=TRUE))
-    sd.mat2 <- apply(mat2,1,function(x) sd(x,na.rm=TRUE))
+    ## Remove rows which show no variation or are all NA
+    sd.mat1 <- apply(mat1, 1, function(x) sd(x,na.rm=TRUE))
+    sd.mat2 <- apply(mat2, 1, function(x) sd(x,na.rm=TRUE))
+
+    toRemove <- which(sd.mat1==0 | sd.mat2==0 | is.na(sd.mat1) | is.na(sd.mat2))
+
+    sd.mat1 <- sd.mat1[-toRemove]
+    sd.mat2 <- sd.mat2[-toRemove]
+    mat1 <- mat1[-toRemove, ]
+    mat2 <- mat2[-toRemove, ]
+    
     
     if(!all(dim(mat1)==dim(mat2)))
         stop("non-conformable arrays")
 
     n.pairwise <- rowSums(!is.na(mat1*mat2))
-
-    cors <- sapply(which(n.pairwise>=min.pairs),function(i) cor(mat1[i,],mat2[i,],use="pairwise.complete.obs"))
-    n.pairwise <- n.pairwise[n.pairwise>=min.pairs]
+    
+    cors <- sapply(which(n.pairwise >= min.pairs), function(i) {
+        if(sd(mat1[i, ],na.rm=TRUE) == 0 | sd(mat2[i, ], na.rm=TRUE) == 0)
+            NA
+        else
+            cor(mat1[i, ], mat2[i, ], use="pairwise.complete.obs")
+    })
+    
+    n.pairwise <- n.pairwise[n.pairwise >= min.pairs]
 
     ft <- fisher.transform(cors)
 
@@ -213,9 +231,10 @@ getZscores <- function(mat1, mat2, min.pairs=4){
     z <- sum(wts*ft)
     pop.cor <- (exp(2*z)-1)/(exp(2*z)+1)
 
-    z.score <- (ft-pop.cor)*sqrt(n.pairwise-3)
+    z.score <- (ft-z)*sqrt(n.pairwise-3)
     
     list(z.score=z.score,within.cors=cors,n.pairwise=n.pairwise,sd.mat1=sd.mat1,sd.mat2=sd.mat2,pop.cor=pop.cor)
+    
 }
 
 
@@ -223,8 +242,9 @@ getZscores <- function(mat1, mat2, min.pairs=4){
 ## GO correlation analysis!
 ##############################################
 
-find_go_groups <- function(z.scores,fdr.thresh,within.cors,sd.mrnas,sd.prots) {
-
+find_go_groups <- function(z.scores, fdr.thresh, within.cors, sd.mrnas, sd.prots) {
+    glen <- sapply(group2proteins, function(x) length(unlist(x)))
+    
     pvals <- rep(NA,length(allGroups))
     med.z <- rep(NA,length(allGroups))
     med.cor <- rep(NA,length(allGroups))
@@ -263,8 +283,19 @@ find_go_groups <- function(z.scores,fdr.thresh,within.cors,sd.mrnas,sd.prots) {
 
     nms <- sapply(names(qvals),function(x) substr(go.names[match(x,go.names[,1]),3],1,30))
     
-    table <- data.frame(Name=nms,"Median Z-Score"=med.z,"Median Correlation"=med.cor,"Median mRNA SD"=med.sd.mrna,"Median protein SD"=med.sd.prot,"Q-value"=qvals,"P-value"=sorted.pvals[names(nms)],"Number of Genes"=glen[names(qvals)])
-    colnames(table) <- c("Name","Median Z-Score","Median Correlation","Median mRNA SD","Median Protein SD","Q-value","P-value","Numer of Genes")
+    table <- data.frame(Name=nms,
+                        "Median Z-Score"=med.z,
+                        "Median Correlation"=med.cor,
+                        "Median mRNA SD"=med.sd.mrna,
+                        "Median protein SD"=med.sd.prot,
+                        "Q-value"=qvals,"P-value"=sorted.pvals[names(nms)],
+                        "Number of Genes"=glen[names(qvals)])
+    
+    colnames(table) <- c("Name","Median Z-Score",
+                         "Median Correlation",
+                         "Median mRNA SD","Median Protein SD",
+                         "Q-value","P-value","Numer of Genes")
+
     table <- table[order(table[,"Median Z-Score"]),]
     table
 }
