@@ -1,4 +1,5 @@
 library(plyr)
+load("Rdata/associations.RData")
 
 protein <- as.matrix(read.csv("protein.csv",row.names=1))
 tab.mart <- read.csv("mart_export.txt",header=TRUE,stringsAsFactors=FALSE)
@@ -82,18 +83,17 @@ strFormat <- function(x) {
 fisher.transform <- function(r){ 1/2*log((1+r)/(1-r)) }
 
 getZscores <- function(mat1, mat2, min.pairs=4){
-
     ## Remove rows which show no variation or are all NA
     sd.mat1 <- apply(mat1, 1, function(x) sd(x,na.rm=TRUE))
     sd.mat2 <- apply(mat2, 1, function(x) sd(x,na.rm=TRUE))
 
     toRemove <- which(sd.mat1==0 | sd.mat2==0 | is.na(sd.mat1) | is.na(sd.mat2))
-
-    sd.mat1 <- sd.mat1[-toRemove]
-    sd.mat2 <- sd.mat2[-toRemove]
-    mat1 <- mat1[-toRemove, ]
-    mat2 <- mat2[-toRemove, ]
-    
+    if(length(toRemove) > 0) {
+        sd.mat1 <- sd.mat1[-toRemove]
+        sd.mat2 <- sd.mat2[-toRemove]
+        mat1 <- mat1[-toRemove, ]
+        mat2 <- mat2[-toRemove, ]
+    }
     
     if(!all(dim(mat1)==dim(mat2)))
         stop("non-conformable arrays")
@@ -106,7 +106,7 @@ getZscores <- function(mat1, mat2, min.pairs=4){
         else
             cor(mat1[i, ], mat2[i, ], use="pairwise.complete.obs")
     })
-    
+
     n.pairwise <- n.pairwise[n.pairwise >= min.pairs]
 
     ft <- fisher.transform(cors)

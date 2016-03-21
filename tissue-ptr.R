@@ -14,45 +14,44 @@ library(grid)
 source("util_functions.R")
 
 ## data for the primary analysis comes from Wilhelm
-focus.data <- "Wilhelm"
-data2 <- "Kim"
+protnm1 <- "Wilhelm"
+mrnanm1 <- "illumina"
 
-mrna <- as.matrix(read.csv("mrna.csv",row.names=1))
-msplit1 <- as.matrix(read.csv("mrna_split1.csv",row.names=1))
-msplit2 <- as.matrix(read.csv("mrna_split2.csv",row.names=1))
+protnm2 <- "Kim"
+mrnanm2 <- "pa"
 
-protein <- as.matrix(read.csv(sprintf("protein_%s.csv",focus.data),row.names=1))
-protein2 <- as.matrix(read.csv(sprintf("protein_%s.csv",data2),row.names=1))
+mrna <- as.matrix(read.csv(sprintf("data/mrna_%s.csv", mrnanm1) ,row.names=1))
+mrna2 <- as.matrix(read.csv(sprintf("data/mrna_%s.csv", mrnanm2) ,row.names=1))
+protein <- as.matrix(read.csv(sprintf("data/protein_%s.csv", protnm1),row.names=1))
+protein2 <- as.matrix(read.csv(sprintf("data/protein_%s.csv", protnm2),row.names=1))
 
-tissue.names <- intersect(colnames(mrna),colnames(protein))
-pretty.tissue.names <- sapply(tissue.names,strFormat)
+tissue.names <- intersect(colnames(mrna), colnames(protein))
+pretty.tissue.names <- sapply(tissue.names, strFormat)
 n.tissues <- length(tissue.names)
 
 gene.names <- intersect(rownames(mrna), rownames(protein))
 n.genes <- length(gene.names)
 
-mrna <- mrna[gene.names,tissue.names]
-msplit1 <- msplit1[gene.names, tissue.names]
-msplit2 <- msplit2[gene.names, tissue.names]
+mrna <- mrna[gene.names, tissue.names]
 protein <- protein[gene.names, tissue.names]
 
 tissue.ratios <- (10^protein) / (10^mrna)
 median.ratios <- apply(tissue.ratios, 1, function(x) median(x,na.rm=TRUE))
-prediction.ratios <- log10((10^protein) / ((10^mrna) * median.ratios))
+prediction.ratios <- log10(tissue.ratios * median.ratios)
 predicted.raw <- (10^mrna) * median.ratios
 
 ## ----results='hide', fig.show='hide',label=figure-1,dependson=c("initialize"),echo=FALSE,warning=FALSE----
 
-keep.indices <- which(log10(predicted.raw)!=protein)
-cor.raw <- cor(log10(predicted.raw[keep.indices]),as.numeric(protein[keep.indices]))
+keep.indices <- which(log10(predicted.raw) != protein)
+cor.raw <- cor(log10(predicted.raw[keep.indices]), as.numeric(protein[keep.indices]))
     
 png("Figs/1a_mrna_v_protein.png")
 print(
 
-    ggplot(data=data.frame(x=predicted.raw[keep.indices],y=10^as.numeric(protein[keep.indices])),aes(x=x,y=y))+
+    ggplot(data=data.frame(x=predicted.raw[keep.indices], y=10^as.numeric(protein[keep.indices])),aes(x=x,y=y))+
     geom_point(colour="blue",alpha=0.03)+
-    scale_x_log10(breaks=10^(1:10),label=scientific_10,limits=c(10^2,10^8))+
-    scale_y_log10(breaks=10^(1:10),labels=scientific_10,limits=c(10^2,10^8))+
+    scale_x_log10(breaks=10^(1:10),label=scientific_10,limits=c(10^2,10^10))+
+    scale_y_log10(breaks=10^(1:10),labels=scientific_10,limits=c(10^2,10^10))+
     labs(x="Scaled mRNA",y="Measured Protein",title="")+
     annotate("text", x = 10^3, y = 10^7,label=as.character(as.expression(substitute(italic(R)[T]^2~"="~r2,list(r2=round(cor.raw^2,digits=2))))),parse=TRUE,size=10)+
     annotate("text", x = 10^3, y = 10^7.6,label=as.character(as.expression(substitute(italic(R)[T]~"="~r,list(r=round(cor.raw,digits=2))))),parse=TRUE,size=10)+
@@ -95,7 +94,7 @@ id <- rep(rownames(mrna),each=n.tissues)
 df <- data.frame(x=mrna.vec,y=protein.vec,id=id)
 
 mean.prot <- rowMeans(protein[full.protein,])
-large.prots <- sample(names(mean.prot[mean.prot>6.5]),10)
+large.prots <- sample(names(mean.prot[mean.prot>6.5]), 10)
 sub.proteins <- unique(c(large.prots,sample(unique(id)[negative.slopes],100)))
        
 df.sub <- df[df$id %in% sub.proteins,]
@@ -120,11 +119,7 @@ ggplot(data=df.sub,aes(x=x,y=y))+geom_smooth(method=lm,se=FALSE,aes(group=id),co
 )
 dev.off()
 
-
-## ----results='hide', fig.show='hide',label=figure-2,dependson=c("initialize"),echo=FALSE,warning=FALSE----
-
-
-within.indices <- which(apply(!is.na(protein*predicted.raw),1,sum)>3)
+within.indices <- which(apply(!is.na(protein * predicted.raw), 1, sum) > 3)
 within.cors <- sapply(within.indices,function(i) cor(protein[i,],log(predicted.raw)[i,],use="pairwise.complete.obs"))
 between.cors <- sapply(1:ncol(protein),function(i) cor(protein[,i],log10(predicted.raw)[,i],use="pairwise.complete.obs"))
 between.cors.raw <- sapply(1:ncol(protein),function(i) cor(protein[,i],mrna[,i],use="pairwise.complete.obs"))
@@ -150,10 +145,6 @@ ggplot(data.frame(x=within.cors))+geom_histogram(aes(x=x,fill="within"),colour="
           axis.text.y  = element_text(size=16,hjust=0)) +
     scale_y_continuous(limits=c(0,300))+
     guides(fill=FALSE)
-
-
-
-
 
 pdf("Figs/appendix_between_hists.pdf")
 ggplot(data.frame(x=between.cors, x2=between.cors.raw, labels=tissue.names)) + 
@@ -240,11 +231,6 @@ ggplot(data.frame(cors=pooled.cors, cut=label), aes(x=cors, fill=label)) +
     geom_vline(xintercept = mrnaProtInfo$pop.cor, linetype=2)
 dev.off()
 
-
-
-
-## ----results='hide',fig.show='hide',label=figure-5, dependson("initialize"),echo=FALSE,warning=FALSE----
-
 n.prot <- rowSums(!is.na(protein))
 sd.prot.err <- uniroot(function(x) pnorm(log10(1.5),mean=0,sd=x)-0.75,lower=0,upper=10)$root
 sd.prot.tot <- sqrt(sum((n.prot-1)*apply(protein,1,function(x) var(x,na.rm=TRUE)),na.rm=TRUE)/(sum(n.prot,na.rm=TRUE)-sum(n.prot>1)))
@@ -322,10 +308,12 @@ text(0.27,0.27,"100%",cex=2,col="dark grey")
 dev.off() 
 
 ## Compute mrna reliabilities
-mrna.reliabilities <- sapply(1:nrow(msplit1),function(i) cor(msplit1[i,],msplit2[i,],use="pairwise.complete.obs"))
-    names(mrna.reliabilities) <- rownames(msplit1)
-med.mrna <- median(mrna.reliabilities,na.rm=TRUE)
-print(med.mrna)
+mrnaRows <- intersect(rownames(mrna), rownames(mrna2))
+mrnaCols <- intersect(colnames(mrna), colnames(mrna2))
+
+mrnaRelInfo <- getZscores(mrna[mrnaRows, mrnaCols], mrna2[mrnaRows, mrnaCols])
+print(mrnaRelInfo$pop.cor)
+mrna.reliabilities <- mrnaRelInfo$within.cors
 
 pdf("Figs/mrna_reliabilities.pdf")
 ggplot(data.frame(x=mrna.reliabilities))+geom_histogram(aes(x=x,fill="mRNA"),colour="black",binwidth=0.05,size=0.1)+labs(x="Reliability",y="",title=expression(paste("mRNA Reliabilities, Median = ",med.mrna,sep="")))+
@@ -382,13 +370,17 @@ proteinConsensus <- w1*protein[prows, pcols]+w2*protein2[prows, pcols]
 proteinConsensus[which(is.na(protein[prows, pcols]))] <- (protein2[prows, pcols])[which(is.na(protein[prows, pcols]))]
 proteinConsensus[which(is.na(protein2[prows, pcols]))] <- (protein[prows, pcols])[which(is.na(protein2[prows, pcols]))]
 
-pc2 <- cbind(proteinConsensus, protein[prows, c("stomach", "spleen")])
+pc2 <- cbind(proteinConsensus,
+             protein[prows, setdiff(colnames(protein), colnames(protein2))],
+             protein2[prows, setdiff(colnames(protein2), colnames(protein))])
 getZscores(pc2[, colnames(protein)], mrna[prows, ])$pop.cor
-pc2 <- rbind(pc2, protein[
 
 getZscores(protein[prows, ], mrna[prows, ])$pop.cor
+getZscores(protein[intersect(prows, rownames(mrna2)), ],
+           mrna2[intersect(prows, rownames(mrna2)), colnames(protein)])$pop.cor
 
-write.csv(pc2, file="protein_consensus.csv")
+
+write.csv(pc2, file="data/protein_consensus.csv")
 
 ## ----fig.show='hide',label=figure-s1, dependson("initialize"),echo=FALSE,warning=FALSE, results='hide'----
 
@@ -507,13 +499,9 @@ dev.off()
 
 
 ## second protein dataset with mrna
-mrnaProtInfo2 <- getZscores(mrna[prows, pcols], protein2[prows,pcols])
+mrnaProtInfo2 <- getZscores(mrna[prows, pcols], protein2[prows, pcols])
 mrel.groups <- find_go_groups(mrel.info$z.score,fdr.thresh,mrel.info$within.cors,mrel.info$sd.mat1,mrel.info$sd.mat2)
 
-
-
-
-## ----results='hide',fig.show='hide',label=guilt, dependson("initialize"),echo=FALSE,warning=FALSE----
     withinGroupCors <- matrix(NA,nrow=length(allGroups),ncol=2)
     rownames(withinGroupCors) <- allGroups
     colnames(withinGroupCors) <- c("Protein","mRNA")
@@ -660,7 +648,3 @@ peptide.cors <- ddply(subset(df,count>=4),~Protein,function(x){
 })
 
 median.reliability <- median(peptide.cors[,2],na.rm=TRUE)^2
-
-
-
-
