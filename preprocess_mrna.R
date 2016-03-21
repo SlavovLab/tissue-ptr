@@ -58,10 +58,10 @@ write.csv(mcp, "data/mrna_mcp.csv", quote=FALSE)
 ######################################
 
 pa <- read.table("~/Dropbox/NatureCommentData/ProteinAtlas/transcript_rna_tissue.tsv", sep="\t", header=TRUE)
-pa[pa==0] <- NA
-pa <- log10(pa)
 
 pa_agg <- aggregate(pa[, -(1:2)], by=list(pa[, 1]), function(x) sum(x, na.rm=T))
+pa_agg[pa_agg==0] <- NA
+pa_agg[, -(1:2)] <- log10(pa_agg[, -(1:2)])
 
 rnms <- pa_agg[, 1]
 pa_agg <- pa_agg[, -1]
@@ -72,7 +72,7 @@ tissues <- strsplit(cnms, split="\\.|_", fixed=FALSE) %>%
     sapply(FUN = function(x) x[1])
 
 ## normalize mrna's against mrna[,1]
-for(i in 2:ncol(illumina)){
+for(i in 2:ncol(pa_agg)){
 
     pa_agg[,i] <- pa_agg[,i] + median( pa_agg[,1] - pa_agg[,i], na.rm=TRUE)
 
