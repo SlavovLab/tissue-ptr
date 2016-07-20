@@ -1,4 +1,4 @@
-library(plyr)
+library(dplyr)
 library(mvtnorm)
 source("util_functions.R")
 

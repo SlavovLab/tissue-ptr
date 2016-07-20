@@ -1,7 +1,6 @@
 ## ----results='hide',echo=FALSE,warning=FALSE,message=FALSE,label=initialize,cache=FALSE----
 
 options(stringsAsFactors=FALSE)
-opts_chunk$set(cache.path = 'cache/',fig.path = 'Figs/')
 
 library(ggplot2)
 library(scales)
@@ -11,6 +10,7 @@ library(mvtnorm)
 library(fdrtool)
 library(xtable)
 library(grid)
+library(fields)
 source("util_functions.R")
 
 ## data for the primary analysis comes from Wilhelm
@@ -36,84 +36,131 @@ mrna <- mrna[gene.names, tissue.names]
 protein <- protein[gene.names, tissue.names]
 
 tissue.ratios <- (10^protein) / (10^mrna)
-median.ratios <- apply(tissue.ratios, 1, function(x) median(x,na.rm=TRUE))
+median.ratios <- apply(tissue.ratios, 1, function(x) median(x, na.rm=TRUE))
 prediction.ratios <- log10(tissue.ratios * median.ratios)
 predicted.raw <- (10^mrna) * median.ratios
 
-## ----results='hide', fig.show='hide',label=figure-1,dependson=c("initialize"),echo=FALSE,warning=FALSE----
-
 keep.indices <- which(log10(predicted.raw) != protein)
 cor.raw <- cor(log10(predicted.raw[keep.indices]), as.numeric(protein[keep.indices]))
-    
-png("Figs/1a_mrna_v_protein.png")
+
+## number of proteins quantified (intersection and union) by tissue
+commonProteins <- intersect(rownames(protein), rownames(protein2))
+allProteins <- union(rownames(protein), rownames(protein2))
+
+print(length(commonProteins))
+print(length(allProteins))
+
+abundInBoth <- sapply(intersect(colnames(protein), colnames(protein2)), function(tiss) {
+    sum(!is.na(protein[commonProteins, tiss]) & !is.na(protein2[commonProteins, tiss]))
+})
+
+abundInEither <- sapply(intersect(colnames(protein), colnames(protein2)), function(tiss) {
+    length(union(rownames(protein)[!is.na(protein[, tiss])], rownames(protein2)[!is.na(protein[, tiss])]))
+})
+
+print(cbind(abundInBoth, abundInEither))
+
+## 1a: fraction of total protein variance explained by scaled mRNA levels
+pdf("Figs/1a_mrna_v_protein.pdf", width=8, height=7)
 print(
 
     ggplot(data=data.frame(x=predicted.raw[keep.indices], y=10^as.numeric(protein[keep.indices])),aes(x=x,y=y))+
     geom_point(colour="blue",alpha=0.03)+
-    scale_x_log10(breaks=10^(1:10),label=scientific_10,limits=c(10^2,10^10))+
-    scale_y_log10(breaks=10^(1:10),labels=scientific_10,limits=c(10^2,10^10))+
+    scale_x_log10(breaks=10^(3:11),label=scientific_10, limits=c(10^3, 10^11)) +
+    scale_y_log10(breaks=10^(3:11),labels=scientific_10, limits=c(10^3, 10^11)) +
     labs(x="Scaled mRNA",y="Measured Protein",title="")+
-    annotate("text", x = 10^3, y = 10^7,label=as.character(as.expression(substitute(italic(R)[T]^2~"="~r2,list(r2=round(cor.raw^2,digits=2))))),parse=TRUE,size=10)+
-    annotate("text", x = 10^3, y = 10^7.6,label=as.character(as.expression(substitute(italic(R)[T]~"="~r,list(r=round(cor.raw,digits=2))))),parse=TRUE,size=10)+
+    annotate("text", x = 10^4, y = 10^9,
+             label=as.character(as.expression(
+                 substitute(italic(R)[T]^2~"="~r2,
+                            list(r2=formatC(cor.raw^2, format="f", digits=2))))),
+             parse=TRUE, size=10) +
+    annotate("text", x = 10^4, y = 10^10,
+             label=as.character(as.expression(
+                 substitute(italic(R)[T]~"="~r,
+                            list(r=formatC(cor.raw, format="f", digits=2))))),
+             parse=TRUE, size=10) +
     theme(axis.title.x = element_text(face="bold",size=30),
           axis.text.x  = element_text(size=30),
           axis.title.y = element_text(face="bold",size=30),
-          axis.text.y  = element_text(size=30,hjust=0)),
+ axis.text.y  = element_text(size=30,hjust=0)),
     )
 dev.off()
 
-
+## 1b: simpson's paradox figure, manually pick genes to make point
 rsquared.vec <- c()
-negative.slopes <- c()
-negative.slopes.vals <- c()
+small.slopes <- c()
+small.slopes.vals <- c()
 for(i in 1:nrow(protein)){
-    if(sum(!is.na(predicted.raw[i,])&!is.na(protein[i,]))>1){
-        lm.fit <- lm(protein[i,]~log10(predicted.raw)[i,])
+    if( sum(!is.na(predicted.raw[i,]) & !is.na(protein[i,])) > 4){
+        lm.fit <- lm(protein[i,] ~ log10(predicted.raw)[i,])
         slope <- lm.fit$coefficients[2]
         rsq <- summary(lm.fit)$r.squared
-        if(rsq<1 & sum(!is.na(predicted.raw[i,]*protein[i,]))>4)
+        if(rsq < 1 & sum(!is.na(predicted.raw[i, ]*protein[i,])) > 4)
             rsquared.vec <- c(rsquared.vec,rsq)
-        if(slope<0){
-            negative.slopes <- c(negative.slopes,i)
-            negative.slopes.vals <- c(negative.slopes.vals,slope)
+        if(slope < 0.2 & slope > -0.2 &
+           max(log10(predicted.raw[i, ]), na.rm=TRUE) -
+           min(log10(predicted.raw[i, ]), na.rm=TRUE) < 2) {
+
+            small.slopes <- c(small.slopes, i)
+            small.slopes.vals <- c(small.slopes.vals, slope)
         }
     }
 }
 
 
+## proteins which are measured in all tissues 
+full.protein <- names(
+    which(
+        apply(protein[small.slopes, ], 1, function(x)
+            sum(!is.na(x))) ==n.tissues &
+        apply(predicted.raw[small.slopes, ], 1, function(x)
+            sum(!is.na(x)))==n.tissues))
 
-full.protein <- names(which(apply(protein[negative.slopes,],1,function(x) sum(!is.na(x)))==n.tissues&apply(predicted.raw[negative.slopes,],1,function(x) sum(!is.na(x)))==n.tissues))
-
-sort(rowMeans(protein[full.protein,]))
-focus.prot <- "ENSG00000111640"
-
-
+## focus.prot <- names(sort(rowMeans(protein[full.protein,]), decreasing=TRUE))[1]
+focus.prot <- "ENSG00000163631"
+    
 mrna.vec <- as.numeric(t(log10(predicted.raw)))
 protein.vec <- as.numeric(t(protein))
-id <- rep(rownames(mrna),each=n.tissues)
-df <- data.frame(x=mrna.vec,y=protein.vec,id=id)
+id <- rep(rownames(mrna), each=n.tissues)
+df <- data.frame(x=mrna.vec, y=protein.vec, id=id)
 
-mean.prot <- rowMeans(protein[full.protein,])
-large.prots <- sample(names(mean.prot[mean.prot>6.5]), 10)
-sub.proteins <- unique(c(large.prots,sample(unique(id)[negative.slopes],100)))
+mean.prot <- rowMeans(protein[small.slopes, ], na.rm=TRUE)
+qts <- quantile(mean.prot, c(0.05, 0.95))
+## manually add in some proteins with high abundances
+large.prots <- sample(names(mean.prot[mean.prot > qts[2]]), 10)
+small.prots <- sample(names(mean.prot[mean.prot < qts[1]]), 10)
+
+## sample proteins 
+sub.proteins <- unique(c(large.prots, small.prots,
+                         sample(unique(id)[small.slopes], 80)))
        
 df.sub <- df[df$id %in% sub.proteins,]
-cor.segs <- cor(df.sub$x,df.sub$y,use="complete.obs")
+cor.segs <- cor(df.sub$x, df.sub$y, use="complete.obs")
 
-pdf("Figs/1b_mrna_v_protein_segs_new.pdf",width=10,height=10)
+pdf("Figs/1b_mrna_v_protein_segs_horiz.pdf", width=8, height=7)
 print(
-ggplot(data=df.sub,aes(x=x,y=y))+geom_smooth(method=lm,se=FALSE,aes(group=id),colour=alpha("black",0.5))+scale_x_continuous(breaks=1:10,label=function(x) parse(text=paste("10^", x)),limits=c(2,9))+
-    scale_y_continuous(breaks=1:10,labels=function(x) parse(text=paste("10^", x)),limits=c(2,9))+
+    ggplot(data=df.sub, aes(x=x, y=y)) +
+    geom_smooth(method=lm, se=FALSE, aes(group=id), colour=alpha("black",0.5)) +
+    scale_x_continuous(breaks=3:11, label=function(x) parse(text=paste("10^", x)), limits=c(3,11)) +
+    scale_y_continuous(breaks=3:11,labels=function(x) parse(text=paste("10^", x)), limits=c(3,11)) +
     labs(x="Scaled mRNA",y="Measured Protein")+
-    annotate("text", x = 3, y = 8,label=as.character(as.expression(substitute(italic(R)[T]^2~"="~r2,list(r2=round(cor.segs^2,digits=2))))),parse=TRUE,size=10)+
-    annotate("text", x = 3, y = 8.5,label=as.character(as.expression(substitute(italic(R)[T]~"="~r,list(r=round(cor.segs,digits=2))))),parse=TRUE,size=10)+
+    annotate("text", x = 4, y = 9,
+             label=as.character(as.expression(substitute(
+                 italic(R)[T]^2~"="~r2,
+                 list(r2=formatC(cor.segs^2, format="f", digits=2))))),
+             parse=TRUE,size=10) +
+    annotate("text", x = 4, y = 10,
+             label=as.character(as.expression(substitute(
+                 italic(R)[T]~"="~r,
+                 list(r=formatC(cor.segs, format="f", digits=2))))),
+             parse=TRUE,size=10)+
     theme(axis.title.x = element_text(face="bold",size=30),
           axis.text.x  = element_text(size=30),
           axis.title.y = element_text(face="bold",size=30),
-          axis.text.y  = element_text(size=30,hjust=0))+
-    geom_point(data=data.frame(x=log10(predicted.raw[focus.prot,]),y=protein[focus.prot,],Tissue=tissue.names),aes(x=x,y=y,label=length(tissue.names):1,color=Tissue),size=3)+#scale_colour_discrete(guide=FALSE)+
+          axis.text.y  = element_text(size=30,hjust=0)) +
+    geom_point(data=data.frame(x=log10(predicted.raw[focus.prot,]),y=protein[focus.prot,],Tissue=tissue.names),aes(x=x,y=y,label=length(tissue.names):1,color=Tissue),size=3)+
     theme(legend.text=element_text(size=15),legend.title.align=0.5,
-          legend.background=element_rect(fill=alpha("gray", 0.5)),legend.key=element_blank(),legend.title=element_text(size=14)) +
+          legend.background=element_rect(fill=alpha("gray", 0.75)),legend.key=element_blank(),legend.title=element_text(size=14)) +
     guides(colour = guide_legend(override.aes = list(size=5)))+
     geom_smooth(data=data.frame(x=log10(predicted.raw[focus.prot,]),y=protein[focus.prot,]),method=lm,se=FALSE,colour="black",size=1.5)+theme(legend.justification=c(1,0), legend.position=c(1,0)),
 )
@@ -162,7 +209,6 @@ ggplot(data.frame(x=between.cors, x2=between.cors.raw, labels=tissue.names)) +
           legend.justification=c(1,1), legend.position=c(1,1),
           legend.background = element_rect(fill = "transparent")) +
     guides(fill=guide_legend(title=NULL))
-
 dev.off()
 
 ### Histogram of R-squared
@@ -177,7 +223,6 @@ dev.off()
 
 
 mrnaProtInfo <- getZscores(protein, mrna)
-
 pop.cor <- mrnaProtInfo$pop.cor
 
 print(sprintf("Estimated population correlation: %.3f", pop.cor))
@@ -231,6 +276,8 @@ ggplot(data.frame(cors=pooled.cors, cut=label), aes(x=cors, fill=label)) +
     geom_vline(xintercept = mrnaProtInfo$pop.cor, linetype=2)
 dev.off()
 
+
+## Fold error / reliability simulation
 n.prot <- rowSums(!is.na(protein))
 sd.prot.err <- uniroot(function(x) pnorm(log10(1.5),mean=0,sd=x)-0.75,lower=0,upper=10)$root
 sd.prot.tot <- sqrt(sum((n.prot-1)*apply(protein,1,function(x) var(x,na.rm=TRUE)),na.rm=TRUE)/(sum(n.prot,na.rm=TRUE)-sum(n.prot>1)))
@@ -243,7 +290,7 @@ sd.mrna.err <- uniroot(function(x) pnorm(log10(1.2),mean=0,sd=x)-0.75,lower=0,up
 sd.mrna.tot <- sqrt(sum((n.mrna-1)*apply(mrna,1,function(x) var(x,na.rm=TRUE)),na.rm=TRUE)/(sum(n.mrna,na.rm=TRUE)-sum(n.mrna>1)))
 Rmrna <- 1-sd.mrna.err^2/sd.mrna.tot^2
 
-pdf("Figs/5e-noise-correction.pdf")
+## 
 mar2 <- par()$mar
 mar2[2] <- 5.1
 par(mar=mar2)
@@ -267,53 +314,29 @@ curve(sapply(x,function(fc){ 1-(uniroot(function(s) pnorm(log10(fc),mean=0,sd=s)
 
 dev.off()
 
+
+## R-squared as a function of reliabilities
+## assuming true mrna/prot correlation = pop.cor
 corrected.cor <- pop.cor/(Rprot*Rmrna)
 corrected.rsq <- corrected.cor^2
-
-Rprot.grid <- seq(pop.cor^2,1,by=0.01)
-Rmrna.grid <- seq(pop.cor^2,1,by=0.01)
-Rgrid <- expand.grid(Rprot.grid,Rmrna.grid)
-rsq.grid <- matrix(pop.cor/sqrt(Rgrid[,1]*Rgrid[,2]),nrow=length(Rprot.grid))^2
-
-rsq.grid[rsq.grid>1] <- 1
-pdf("Figs/5e-noise-correction.pdf")
-par(mar=c(6.1,5.1,4.1,2.1))
-cols <- c("#08306B","#08519C","#2171B5","#4292C6","#9ECAE1")
-cols2 <- rep(cols,each=2)
-cols <- sapply(1:9,function(i) avg.colors(cols2[i],cols2[i+1]))
-
-plot(0,xlim=c(pop.cor^2,1),ylim=c(pop.cor^2,1),xlab="Reliability of mRNA Measurements",ylab="Reliability of Protein Measurements",main="Fraction of Across-Tissue Protein Variance\n Explained By Transcript Levels",cex.lab=2,cex.axis=1.5,cex.main=1.5,xaxs="i",yaxs="i")
-out.prev <- curve(pop.cor^2/x,from=0.1,to=1,col="red",lwd=3,n=1000,add=TRUE)
-polygon(c(0,out.prev$x,1),c(0,out.prev$y,0),density = c(10, 20), angle = c(45, -45))
-count <- 1
-for(cur in seq(0.9,0.1,by=-0.1)){
-    col <- cols[count]
-    out.cur <- curve(pop.cor^2/(cur*x),from=0.1,to=1,lwd=1,lty=2,col="black",n=1000,add=TRUE)
-    polygon(c(out.prev$x,rev(out.cur$x)),c(out.prev$y,rev(out.cur$y)),col=col,lty=0)
-    out.prev <- out.cur
-    count <- count+1
-}
-null.line <- curve(pop.cor^2/x,from=0.1,to=1,col="red",lwd=3,n=1000,add=TRUE)
-text(0.9,0.9,"10",cex=1.5,col="dark grey",srt=-45)
-text(0.75,0.72,"20",cex=1.5,col="dark grey",srt=-45)
-text(0.65,0.6,"30",cex=1.5,col="dark grey",srt=-45)
-text(0.58,0.53,"40",cex=1.5,col="dark grey",srt=-45)
-text(0.52,0.47,"50",cex=1.5,col="dark grey",srt=-45)
-text(0.48,0.43,"60",cex=1.2,col="dark grey",srt=-45)
-text(0.45,0.40,"70",cex=1.2,col="dark grey",srt=-45)
-text(0.43,0.37,"80",cex=1,col="dark grey",srt=-45)
-text(0.41,0.35,"90",cex=1,col="dark grey",srt=-45)
-rect(0.18,0.22,0.35,0.32,col="white",lty=1)
-text(0.27,0.27,"100%",cex=2,col="dark grey")
-dev.off() 
 
 ## Compute mrna reliabilities
 mrnaRows <- intersect(rownames(mrna), rownames(mrna2))
 mrnaCols <- intersect(colnames(mrna), colnames(mrna2))
 
 mrnaRelInfo <- getZscores(mrna[mrnaRows, mrnaCols], mrna2[mrnaRows, mrnaCols])
-print(mrnaRelInfo$pop.cor)
 mrna.reliabilities <- mrnaRelInfo$within.cors
+mrnaRel <- mrnaRelInfo$pop.cor
+
+## Compute protein reliabilities
+pcols <- intersect(colnames(protein), colnames(protein2))
+prows <- intersect(rownames(protein), rownames(protein2))
+cts <- apply(protein[prows, pcols] * protein2[prows, pcols], 1,
+             function(x) {sum(!is.na(x))})
+
+ppScores <- getZscores(protein[prows, pcols], protein2[prows, pcols])
+protein.reliabilities <- ppScores$within.cors
+protRel <- ppScores$pop.cor
 
 pdf("Figs/mrna_reliabilities.pdf")
 ggplot(data.frame(x=mrna.reliabilities))+geom_histogram(aes(x=x,fill="mRNA"),colour="black",binwidth=0.05,size=0.1)+labs(x="Reliability",y="",title=expression(paste("mRNA Reliabilities, Median = ",med.mrna,sep="")))+
@@ -324,18 +347,6 @@ ggplot(data.frame(x=mrna.reliabilities))+geom_histogram(aes(x=x,fill="mRNA"),col
     scale_x_continuous(limits=c(-1,1))+
     guides(fill=FALSE)
 dev.off()
-
-## Compute protein reliabilities
-pcols <- intersect(colnames(protein), colnames(protein2))
-prows <- intersect(rownames(protein), rownames(protein2))
-cts <- apply(protein[prows, pcols] * protein2[prows, pcols], 1,
-             function(x) {sum(!is.na(x))})
-
-prows <- prows[cts > 4]
-
-ppScores <- getZscores(protein[prows, pcols], protein2[prows, pcols])
-med.prot <- ppScores$pop.cor
-protein.reliabilities <- ppScores$within.cors
 
 pdf("Figs/protein_reliabilities.pdf")
 ggplot(data.frame(x=protein.reliabilities))+geom_histogram(aes(x=x,fill="mRNA"),colour="black",binwidth=0.05,size=0.1)+labs(x="Reliability",y="",title=expression(paste("Protein Reliabilities, Median = ",med.prot,sep="")))+
@@ -349,48 +360,149 @@ dev.off()
 
 ### Compare Kim and Wilhelm
 
-popcor1 <- getZscores(protein[, pcols], mrna[ ,pcols])$pop.cor
-popcor2 <- getZscores(protein2[prows, pcols], mrna[prows, pcols])$pop.cor
+pcols <- Reduce(intersect,
+                list(colnames(protein),
+                     colnames(protein2),
+                     colnames(mrna),
+                     colnames(mrna2)))
+prows <- Reduce(intersect,
+                list(rownames(protein),
+                     rownames(protein2),
+                     rownames(mrna),
+                     rownames(mrna2)))
+
+p1m1cor <- getZscores(protein[prows, pcols], mrna[prows ,pcols])$pop.cor
+p2m1cor <- getZscores(protein2[prows, pcols], mrna[prows, pcols])$pop.cor
+p1m2cor <- getZscores(protein[prows, pcols], mrna2[prows ,pcols])$pop.cor
+p2m2cor <- getZscores(protein2[prows, pcols], mrna2[prows, pcols])$pop.cor
+
+mean(!is.na(protein[prows, pcols]*mrna[prows, pcols]))
+mean(!is.na(protein[prows, pcols]*mrna2[prows, pcols]))
+mean(!is.na(protein2[prows, pcols]*mrna[prows, pcols]))
+mean(!is.na(protein2[prows, pcols]*mrna2[prows, pcols]))
+
+protConsensus <- protein2[prows, pcols]
+for(i in 1:length(pcols)) {
+    notNA <- which(!is.na(protein[prows, pcols[i]] * protein2[prows, pcols[i]]))
+
+    p1m1 <- cor(protein[prows[notNA], pcols[i]], mrna[prows[notNA], pcols[i]], use="pairwise.complete.obs")
+    p2m1 <- cor(protein2[prows[notNA], pcols[i]], mrna[prows[notNA], pcols[i]], use="pairwise.complete.obs")
+    p1p2 <- cor(protein[prows, pcols[i]], protein2[prows, pcols[i]], use="pairwise.complete.obs")
+
+    p1rel1 <- p1p2*p1m1/p2m1
+    p2rel1 <- p1p2*p2m1/p1m1
+    
+    p1m2 <- cor(protein[prows, pcols[i]], mrna2[prows, pcols[i]], use="pairwise.complete.obs")
+    p2m2 <- cor(protein2[prows, pcols[i]], mrna2[prows, pcols[i]], use="pairwise.complete.obs")
+    p1rel2 <- p1p2*p1m2/p2m2
+    p2rel2 <- p1p2*p2m2/p1m2
+
+    ## average independent reliability estimates
+    p1rel <- mean(c(p1rel1, p1rel2))
+    p2rel <- mean(c(p2rel1, p2rel2))
+    
+    w1 <- 1 / (1 + 1/(p1rel/p2rel))
+    w2 <- 1 - w1
+
+    print(sprintf("%s weights: %f, %f", pcols[i], w1, w2))
+    
+    protConsensus[prows[notNA], pcols[i]] <-
+        w1 * protein[prows[notNA], pcols[i]] +
+        w2 * protein2[prows[notNA], pcols[i]]
+    
+}
+
+pcm1cor <- getZscores(protConsensus[prows, pcols], mrna[prows, pcols])$pop.cor
+pcm2cor <- getZscores(protConsensus[prows, pcols], mrna2[prows, pcols])$pop.cor
+
+## consensus dataset more correlated with mrna datasets
+## than either the kim or wilhelm data individually:
+print(sprintf("pcm1cor: %f, p1m1cor: %f, p2m1cor: %f",
+              pcm1cor, p1m1cor, p2m1cor))
+print(sprintf("pcm2cor: %f, p1m2cor: %f, p2m2cor: %f",
+              pcm2cor, p1m2cor, p2m2cor))
+
+## Add genes that were in one dataset but not the other
+protConsensus <- rbind(protConsensus,
+                       protein[setdiff(rownames(protein), prows), pcols],
+                       protein2[setdiff(rownames(protein2), prows), pcols])
+otherCols <- setdiff(union(colnames(protein), colnames(protein2)),
+                     pcols)
+
+## Add tissues that were in one dataset but not the other
+protConsensus <- cbind(protConsensus, matrix(NA,
+                                             nrow=nrow(protConsensus),
+                                             ncol=length(otherCols),
+                                             dimnames=list(
+                                                 rownames(protConsensus),
+                                                 otherCols)))
+protConsensus[rownames(protein), setdiff(colnames(protein), pcols)] <-
+    protein[rownames(protein), setdiff(colnames(protein), pcols)]
+protConsensus[rownames(protein2), setdiff(colnames(protein2), pcols)] <-
+    protein2[rownames(protein2), setdiff(colnames(protein2), pcols)]
+
+write.csv(protConsensus, file="data/protein_consensus.csv")
 
 
-## Estimated reliabilities
-p1.reliability <- med.prot*popcor1/popcor2
-p2.reliability <- med.prot*popcor2/popcor1
+## 2e: 
+pdf("Figs/5e-noise-correction.pdf")
+par(xpd=FALSE)
+par(mar=c(6.1,5.1,4.1,6.1))
+cols <- c("#08306B","#08519C","#2171B5","#4292C6","#9ECAE1")
+cols2 <- rep(cols, each=2)
+cols <- sapply(1:9, function(i) avg.colors(cols2[i], cols2[i+1]))
+cols <- c(cols, "#D8EAF3")
 
-## Consensus Data
+plot(0, xlim=c(0, 1), ylim=c(0, 1), cex=0,
+     xlab="Reliability of mRNA Measurements",
+     ylab="Reliability of Protein Measurements",
+     main=paste0("Fraction of Across-Tissue Protein Variance\n ",
+                 "Explained By Transcript Levels\n"),
+     cex.lab=2, cex.axis=1.5, cex.main=1.5, xaxs="i", yaxs="i")
 
-## ratio of error variances
-eps1 <- (1-p1.reliability)/p1.reliability
-eps2 <- (1-p2.reliability)/p2.reliability
+out.prev <- curve(p2m1cor^2/x, from=p2m1cor^2, to=1, col="red", lwd=3, n=1000, add=TRUE)
+polygon(c(0, 0, out.prev$x,1), c(0, 1, out.prev$y,0), density = c(10, 20), angle = c(45, -45))
+count <- 1
+for(cur in seq(0.9,0.1,by=-0.1)){
+    col <- cols[count]
+    out.cur <- curve(p2m1cor^2/(cur*x), from=p2m1cor^2, to=1,
+                     lwd=1, lty=2,col="black", n=1000, add=TRUE)
+    polygon(c(out.prev$x, rev(out.cur$x)),
+            c(out.prev$y, rev(out.cur$y)), col=col, lty=0)
+    out.prev <- out.cur
+    count <- count+1
+}
+polygon(c(out.prev$x, rev(out.prev$x)),
+        c(out.prev$y, rep(1, length(out.prev$y))),
+        col="#D8EAF3", lty=0) 
+null.line <- curve(p2m1cor^2/x, from=p2m1cor^2, to=1,
+                   col="red",lwd=3,n=1000,add=TRUE)
+text(mrnaRel, protRel, "X", col="red", cex=2)
+text(median(mrna.reliabilities), median(protein.reliabilities), "X", col="red", cex=2)
 
-w1 <- 1/eps1/(1/eps1+1/eps2)
-w2 <- 1-w1
+## colorbar
+par(xpd=TRUE)
+ybot <- 0.15
+xleft <- 1.05
+rectHeight <- 0.075
+rectWidth <- 0.1
 
-proteinConsensus <- w1*protein[prows, pcols]+w2*protein2[prows, pcols]
-proteinConsensus[which(is.na(protein[prows, pcols]))] <- (protein2[prows, pcols])[which(is.na(protein[prows, pcols]))]
-proteinConsensus[which(is.na(protein2[prows, pcols]))] <- (protein[prows, pcols])[which(is.na(protein2[prows, pcols]))]
+for(i in 1:length(cols)) {
+    rect(xleft, ybot + rectHeight*(i-1),
+         xleft + rectWidth,  ybot + rectHeight*i, col=rev(cols)[i], lwd=0)
+    text(xleft + 3/2*rectWidth, ybot + rectHeight*(i-1/2), paste0(i*10, "%"))
+}
+par(xpd=FALSE)
 
-pc2 <- cbind(proteinConsensus,
-             protein[prows, setdiff(colnames(protein), colnames(protein2))],
-             protein2[prows, setdiff(colnames(protein2), colnames(protein))])
-getZscores(pc2[, colnames(protein)], mrna[prows, ])$pop.cor
-
-getZscores(protein[prows, ], mrna[prows, ])$pop.cor
-getZscores(protein[intersect(prows, rownames(mrna2)), ],
-           mrna2[intersect(prows, rownames(mrna2)), colnames(protein)])$pop.cor
-
-
-write.csv(pc2, file="data/protein_consensus.csv")
-
-## ----fig.show='hide',label=figure-s1, dependson("initialize"),echo=FALSE,warning=FALSE, results='hide'----
+dev.off() 
 
 ## noise corrected 
 sd.mrnas <- apply(mrna, 1, function(x) sd(x,na.rm=TRUE))
 sd.prots <- apply(protein, 1, function(x) sd(x,na.rm=TRUE))
 ## temporary
-sd.mrnas.corrected <- sqrt(sd.mrnas^2*med.mrna)
-sd.prots.corrected <- sqrt(sd.prots^2*p1.reliability)
-sd.diffs.corrected <- sd.prots.corrected-sd.mrnas.corrected
+sd.mrnas.corrected <- sqrt(sd.mrnas^2 * mrnaRel)
+sd.prots.corrected <- sqrt(sd.prots^2 * p1.reliability)
+sd.diffs.corrected <- sd.prots.corrected - sd.mrnas.corrected
 
 pdf("Figs/physiological_sds.pdf")
 ggplot(data.frame(x=sd.mrnas.corrected,x2=sd.prots.corrected),labels=c("mRNA","protein"))+geom_histogram(aes(x=x,fill="mRNA"),binwidth=0.03,colour="black",size=0.1,alpha=1)+geom_histogram(aes(x=x2,fill="protein"),binwidth=0.03,colour="black",size=0.1,alpha=0.5)+scale_x_continuous(limits=c(0,1.5))+labs(x="Standard Deviation",y="Count")+
@@ -418,10 +530,127 @@ dev.off()
 
 median(sd.prots.corrected/sd.mrnas.corrected,na.rm=TRUE)
 
-## ----results='asis',fig.show='hide',label=associations-1, dependson("initialize"),echo=FALSE,warning=FALSE----
+
+
+################################################
+### Fold Change Figs in supplement: Choose 3 tissues
+################################################
+
+fold.comparison.tissues <- c("prostate","kidney","liver")
+fold.combos <- combn(fold.comparison.tissues, 2)
+
+for(i in 1:ncol(fold.combos)){
+
+    t1 <- fold.combos[1,i]
+    t2 <- fold.combos[2,i]
+
+    pdf(sprintf("Figs/2_top_%s_%s_fold_cor.pdf",t1,t2))
+
+    fold.cor <- cor(mrna[, t1] - mrna[, t2],
+                    protein[, t1] - protein[, t2], use="complete.obs")
+
+    print(ggplot(data=data.frame(mrna=10^(mrna[,t1]-mrna[,t2]),protein=10^(protein[,t1]-protein[,t2])))+geom_point(aes(x=mrna,y=protein),colour="blue",alpha=0.3)+
+          scale_x_log10(breaks=10^(-2:2),label=scientific_10,limits=c(10^-2,10^2))+
+          scale_y_log10(breaks=10^(-3:3),labels=scientific_10,limits=c(10^-3,10^3))+
+          labs(x="mRNA Fold Change",y="Protein Fold Change")+
+          annotate("text", x = 10^-1.2, y = 10^2.5,label=as.character(as.expression(substitute(italic(R)~"="~r,list(r=round(fold.cor,digits=3))))),parse=TRUE,size=10)+
+          annotate("text", x = 10^-1.2, y = 10^2,label=as.character(as.expression(substitute(italic(R)^2~"="~r2,list(r2=round(fold.cor^2,digits=3))))),parse=TRUE,size=10)+
+          theme(axis.title.x = element_text(face="bold",size=30),
+                axis.text.x  = element_text(size=30),
+                axis.title.y = element_text(face="bold",size=30),
+                axis.text.y  = element_text(size=30,hjust=0)))
+    
+    dev.off()
+    
+}
+
+############ Raw Correlations ###################
+for(tis in fold.comparison.tissues){
+
+    pdf(sprintf("Figs/2_%s_raw_cor.pdf", tis))
+
+    pred <- log10(predicted.raw[, tis])
+    raw <- protein[,tis]
+    keep <- which(pred!=raw)
+    pred <- pred[keep]
+    raw <- raw[keep]
+    cor.raw <- cor(pred,raw,use="complete.obs")^2
+    print(
+        ggplot(data=data.frame(mrna=pred,protein=raw))+geom_point(aes(x=mrna,y=protein),colour="blue",alpha=0.3) +
+        theme(plot.margin=unit(c(5.5, 12.5, 5.5, 5.5), "points")) +
+        scale_x_continuous(breaks=1:10,labels=function(x) parse(text=paste("10^", x)),limits=c(3,10))+
+        scale_y_continuous(breaks=1:10,labels=function(x) parse(text=paste("10^", x)),limits=c(3,10))+
+        labs(x=sprintf("Scaled mRNA in %s",strFormat(tis)),
+             y=sprintf("Measured Protein in %s",strFormat(tis)))+
+        annotate("text", x = 4, y = 9.5,label=as.character(as.expression(substitute(italic(R)~"="~r,list(r=format(cor.raw,digits=2))))),parse=TRUE,size=10)+
+        annotate("text", x = 4, y = 9,label=as.character(as.expression(substitute(italic(R)^2~"="~r2,list(r2=format(cor.raw^2,digits=2))))),parse=TRUE,size=10)+
+        theme(axis.title.x = element_text(face="bold",size=30),
+              axis.text.x  = element_text(size=30),
+              axis.title.y = element_text(face="bold",size=30),
+              axis.text.y  = element_text(size=30,hjust=0))
+        )
+    dev.off()
+    
+}
+
+
+#############################################################################
+############ Raw Correlations using single tissue PTR (not median) ##########
+#############################################################################
+
+for(i in 1:ncol(fold.combos)){
+
+    t1 <- fold.combos[1,i]
+    t2 <- fold.combos[2,i]
+
+    pdf(sprintf("Figs/2_bottom_%s_from_%s.pdf",t1,t2))
+    pred <- log10(tissue.ratios[,t2]*10^mrna[,t1])
+    raw <- protein[,t1]
+    keep <- which(pred!=raw)
+    pred <- pred[keep]
+    raw <- raw[keep]
+    cor.raw <- cor(pred,raw,use="complete.obs")^2
+    print(
+        ggplot(data=data.frame(mrna=pred,protein=raw))+geom_point(aes(x=mrna,y=protein),colour="blue",alpha=0.3)+
+        scale_x_continuous(breaks=1:10,labels=function(x) parse(text=paste("10^", x)),limits=c(2,8))+
+        scale_y_continuous(breaks=1:10,labels=function(x) parse(text=paste("10^", x)),limits=c(2,8))+
+        labs(x=sprintf("%s mRNA scaled by %s PTR",strFormat(t1),strFormat(t2)),
+             y=sprintf("Measured protein in %s",strFormat(t1)))+
+        annotate("text", x = 3, y = 7.5,label=as.character(as.expression(substitute(italic(R)~"="~r,list(r=format(cor.raw,digits=2))))),parse=TRUE,size=10)+
+        annotate("text", x = 3, y = 7,label=as.character(as.expression(substitute(italic(R)^2~"="~r2,list(r2=format(cor.raw^2,digits=2))))),parse=TRUE,size=10)+
+        theme(axis.title.x = element_text(face="bold",size=22),
+              axis.text.x  = element_text(size=30),
+              axis.title.y = element_text(face="bold",size=30),
+              axis.text.y  = element_text(size=30,hjust=0))
+        )
+    dev.off()
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ## look in associations.R for group2proteins and allGroups
-fdr.thresh <- 0.02
+fdr.thresh <- 0.01
 
 atable <- find_go_groups(z.score, fdr.thresh, within.cors, sd.mrnas, sd.prots)
 med.cor <- atable[,"Median Correlation"]
@@ -456,8 +685,7 @@ print(
 dev.off()
 
 
-## ----results='asis',fig.show='hide',label=associations-2, dependson("initialize"),echo=FALSE,warning=FALSE----
-    prel.info <- getZscores(protein[prows, pcols], protein2[prows, pcols])
+prel.info <- getZscores(protein[prows, pcols], protein2[prows, pcols])
 prel.groups <- find_go_groups(prel.info$z.score, fdr.thresh, prel.info$within.cors, prel.info$sd.mat1, prel.info$sd.mat2)
 
 med.cor <- prel.groups[,"Median Correlation"]
@@ -477,7 +705,7 @@ ggplot(data.frame(x=prel.info$within.cors)) +
     guides(fill=FALSE)
 dev.off()
 
-    mrel.info <- getZscores(msplit1, msplit2)
+mrel.info <- getZscores(msplit1, msplit2)
 mrel.groups <- find_go_groups(mrel.info$z.score, fdr.thresh,mrel.info$within.cors,mrel.info$sd.mat1, mrel.info$sd.mat2)
 
 med.cor <- mrel.groups[,"Median Correlation"]
@@ -498,33 +726,7 @@ ggplot(data.frame(x=mrel.info$within.cors)) +
 dev.off()
 
 
-## second protein dataset with mrna
-mrnaProtInfo2 <- getZscores(mrna[prows, pcols], protein2[prows, pcols])
-mrel.groups <- find_go_groups(mrel.info$z.score,fdr.thresh,mrel.info$within.cors,mrel.info$sd.mat1,mrel.info$sd.mat2)
 
-    withinGroupCors <- matrix(NA,nrow=length(allGroups),ncol=2)
-    rownames(withinGroupCors) <- allGroups
-    colnames(withinGroupCors) <- c("Protein","mRNA")
-    for( group in allGroups ) {
-        prots <- n2e(group2proteins[[group]])
-        prots <- intersect(rownames(protein),prots)
-        pts <- protein[prots,]
-        mrs <- mrna[prots,]
-        if(length(prots)>3 & length(prots)<100) {
-            rws <- which(apply(pts,1,function(x) sum(!is.na(x)))>6 & 
-            apply(mrs,1,function(x) sum(!is.na(x)))>6)
-            if(length(rws)>3){
-                med.pts <- median(setdiff(cor(t(pts[rws,]),use="pairwise.complete.obs"),c(-1,1,NA)))
-                med.mrs <- median(setdiff(cor(t(mrs[rws,]),use="pairwise.complete.obs"),c(-1,1,NA)))
-                withinGroupCors[group,] <- c(med.pts,med.mrs)
-        }
-        }
-    }
-pdf("Figs/withing_group_corrs.pdf",width=5,height=5)
-plot(withinGroupCors[,2],withinGroupCors[,1],pch=19,cex=0.4,xlab="mRNA",ylab="Protein",ylim=c(-1,1),xlim=c(-1,1))
-dev.off()
-
-## ------------------------------------------------------------------------
 
  cors.mat <- miss.mat <- matrix(0,nrow=length(pcols),ncol=length(pcols))
  rownames(cors.mat) <- colnames(cors.mat) <- pcols
@@ -594,57 +796,3 @@ for(i in 1:ncol(fold.combos)){
     
 }
 
-#######
-
-Reliability.tissues <- pcols
-direc2 <- "~/Dropbox/NatureComment/Kim_Search_Results_Data"
-peptide.lists <- list()
-for(rtissue in Reliability.tissues){
-
-    print(rtissue)
-    
-    tab <- read.table(sprintf("%s/%s_evidence.txt", direc2, rtissue),
-                          sep="\t",stringsAsFactors=FALSE, header=TRUE)
-    ## colnames(tab) <- c("Protein","Peptide","Modification","a","b","Intensity")
-    tab <- tab[,c("Leading.Razor.Protein", "Sequence", "Modifications", "Intensity")]
-    colnames(tab) <- c("Protein", "Peptide", "Modification", "Intensity")
-    tab <- subset(tab, Modification=="Unmodified")
-
-    tab <- ddply(tab,.(Peptide), function(x) c(Protein=x$Protein[1],Intensity=sum(as.numeric(x$Intensity))))
-
-    ## Order by protein name
-    tab <- tab[order(tab[,"Protein"]),]
-    colnames(tab)[3] <- paste("Intensity",rtissue,sep=".")
-    tab[,3] <- as.numeric(tab[,3])
-    peptide.lists[[rtissue]] <- tab
-    
-}
-
-merged.df <- Reduce(function(x,y) merge(x,y,by=c("Protein","Peptide"),all.x=TRUE,all.y=TRUE),peptide.lists)
-df <- cbind(merged.df,count=apply(merged.df[3:ncol(merged.df)],1,function(x) sum(!is.na(x))))
-## df <- df[order(df$count,decreasing=TRUE),]
-write.csv(df,file="peptide_intensities_all.csv",quote=FALSE)
-
-for(i in 4:(ncol(df)-1)) {
-    df[,i] <- df[,i]*exp(median(log(df[,3])-log(df[,i]),na.rm=TRUE))
-}
-peptide.cors <- ddply(subset(df,count>=4),~Protein,function(x){
-    
-    nr <- nrow(x)
-    if(nr==1)
-        return(NA)
-
-    samp <- sample(1:nr)
-    first.indices <- samp[1:floor(nr/2)]
-    second.indices <- samp[(floor(nr/2)+1):nr]
-    first <- apply(x[first.indices,3:(ncol(x)-1)],2,function(x) mean(x,na.rm=TRUE))
-    second <- apply(x[second.indices,3:(ncol(x)-1)],2,function(x) mean(x,na.rm=TRUE))
-    if(sum(!is.na(first)*!is.na(second))>3){
-        med.cor <- cor(log(first),log(second), use="pairwise.complete.obs")
-        return(med.cor)
-    } else{
-        return(NA)
-    }
-})
-
-median.reliability <- median(peptide.cors[,2],na.rm=TRUE)^2

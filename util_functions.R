@@ -14,6 +14,9 @@ scientific_10 <- function(x) {
 }
 
 sciNotation <- function(x, digits = 0) {
+    if(x==0){
+        return(expression("<" ~ 10^-15))
+    }
     if(is.na(x)){
         warning("x is NA")
         return(1)
