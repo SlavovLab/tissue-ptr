@@ -19,8 +19,9 @@ for(nm in protein_datasets) {
             
             colnames(tissue.tab)[2] <- tissue
             tissue.tab <- tissue.tab[tissue.tab$Gene.names!="",]
-            protein.cur <- merge(protein.cur,tissue.tab,by="Gene.names",all.x=TRUE,all.y=TRUE)
-            protein.cur <- ddply(protein.cur,~Gene.names,function(x) colSums(x[,2:ncol(x),drop=FALSE],na.rm=TRUE))
+            protein.cur <- merge(protein.cur, tissue.tab, by="Gene.names", all.x=TRUE, all.y=TRUE)
+            protein.cur <- ddply(protein.cur, ~Gene.names, function(x)
+                colSums(x[, 2:ncol(x), drop=FALSE],na.rm=TRUE))
         }
     }
 
@@ -33,7 +34,7 @@ for(nm in protein_datasets) {
         if(all(is.na(elst))) {
             NA
         } else {
-            if(length(elst)>1)
+            if(length(elst) > 1)
                 NA
             else
                 elst[!is.na(elst)]
@@ -44,7 +45,7 @@ for(nm in protein_datasets) {
     protein.cur <- protein.cur[not.na,]
     rownames(protein.cur) <- ens[not.na]
     protein.cur[protein.cur==0] <- NA
-    protein.cur <- as.matrix(log10(protein.cur[,2:ncol(protein.cur)]))
+    protein.cur <- as.matrix(log10(protein.cur[, 2:ncol(protein.cur)]))
 
     ## Normalize proteins against particular tissue
     norm.tissue <- colnames(protein.cur)[1]
@@ -54,6 +55,25 @@ for(nm in protein_datasets) {
             median(protein.cur[,norm.tissue] - protein.cur[,tissue],na.rm=TRUE)
     }
 
-    write.csv(protein.cur,file=sprintf("data/protein_%s.csv", nm), quote=FALSE)
+    write.csv(protein.cur, file=sprintf("data/protein_%s.csv", nm), quote=FALSE)
 
 }
+
+## Gold standard targeted MS for validation (from Edfors et al, 2016)
+protVal <- read.csv("data/validation_raw.csv", row.names=1)
+colnames(protVal) <- tolower(colnames(protVal))
+gnms <- n2e(rownames(protVal))
+protVal <- protVal[!is.na(gnms), ]
+rownames(protVal) <- gnms[!is.na(gnms)]
+protVal <- log10(protVal[, intersect(colnames(protVal), colnames(protein))])
+protVal[protVal == -Inf] <- NA
+
+## Normalize proteins against first tissue
+norm.tissue <- colnames(protVal)[1]
+for(tissue in setdiff(colnames(protVal), norm.tissue)){
+    
+    protVal[, tissue] <- protVal[, tissue] +
+        median(protVal[, norm.tissue] - protVal[, tissue], na.rm=TRUE)
+}
+
+write.csv(protVal, file="data/validation.csv", quote=FALSE)
