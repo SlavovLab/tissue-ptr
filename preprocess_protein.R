@@ -12,7 +12,7 @@ for(nm in protein_datasets) {
                  "stomach", "thryoid.gland", "salivary.gland", "spleen",
                  "colon", "heart", "lung")
     for(tissue in tissues){
-        fname <- sprintf("~/Dropbox/NatureCommentData/%s_Search_Results_Data/%s_proteinGroups.txt",nm, tissue)
+        fname <- sprintf("data/%s_Search_Results_Data/%s_proteinGroups.txt", nm, tissue)
         if(file.exists(fname)) {
             tissue.tab <- read.table(fname,stringsAsFactors=FALSE,sep="\t",header=TRUE)
             tissue.tab <- tissue.tab[,c("Gene.names","iBAQ")]
