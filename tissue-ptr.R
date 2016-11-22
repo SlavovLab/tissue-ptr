@@ -333,6 +333,9 @@ dev.off()
 ## assuming true mrna/prot correlation = pop.cor
 #########################################################################
 
+mrnaProtInfo <- getZscores(protein, mrna)
+pop.cor <- mrnaProtInfo$pop.cor
+
 corrected.cor <- pop.cor/(Rprot*Rmrna)
 corrected.rsq <- corrected.cor^2
 
@@ -397,17 +400,20 @@ prows <- Reduce(intersect,
                      rownames(mrna),
                      rownames(mrna2)))
 
-p1m1scores <- getZscores(protein[prows, pcols], mrna[prows ,pcols])
-p2m1scores <- getZscores(protein2[prows, pcols], mrna[prows, pcols])
-p1m2scores <- getZscores(protein[prows, pcols], mrna2[prows ,pcols])
-p2m2scores <- getZscores(protein2[prows, pcols], mrna2[prows, pcols])
+## To facilitate fair comparison, only look at genes 
+## measured in both data sets.
+NAMask <- protein[prows, pcols] * protein2[prows, pcols]
+NAMask[!is.na(NAMask)] <- 1
+
+p1m1scores <- getZscores(protein[prows, pcols]*NAMask, mrna[prows ,pcols])
+p2m1scores <- getZscores(protein2[prows, pcols]*NAMask, mrna[prows, pcols])
+p1m2scores <- getZscores(protein[prows, pcols]*NAMask, mrna2[prows ,pcols])
+p2m2scores <- getZscores(protein2[prows, pcols]*NAMask, mrna2[prows, pcols])
 
 p1m1cor <- p1m1scores$pop.cor
 p2m1cor <- p2m1scores$pop.cor
 p1m2cor <- p1m2scores$pop.cor
 p2m2cor <- p2m2scores$pop.cor
-
-
 
 mean(!is.na(protein[prows, pcols]*mrna[prows, pcols]))
 mean(!is.na(protein[prows, pcols]*mrna2[prows, pcols]))
@@ -417,7 +423,10 @@ mean(!is.na(protein2[prows, pcols]*mrna2[prows, pcols]))
 protConsensus <- protein2[prows, pcols]
 for(i in 1:length(pcols)) {
     notNA <- which(!is.na(protein[prows, pcols[i]] * protein2[prows, pcols[i]]))
+    p1NA <- which(is.na(protein[prows, pcols[i]]) & !is.na(protein2[prows, pcols[i]]))
+    p2NA <- which(!is.na(protein[prows, pcols[i]]) & is.na(protein2[prows, pcols[i]]))                  
 
+    
     p1m1 <- cor(protein[prows[notNA], pcols[i]], mrna[prows[notNA], pcols[i]], use="pairwise.complete.obs")
     p2m1 <- cor(protein2[prows[notNA], pcols[i]], mrna[prows[notNA], pcols[i]], use="pairwise.complete.obs")
     p1p2 <- cor(protein[prows, pcols[i]], protein2[prows, pcols[i]], use="pairwise.complete.obs")
@@ -438,16 +447,21 @@ for(i in 1:length(pcols)) {
     w2 <- 1 - w1
 
     print(sprintf("%s weights: %f, %f", pcols[i], w1, w2))
-    
+
+    ## if measurements observed in both value is weighted average
     protConsensus[prows[notNA], pcols[i]] <-
         w1 * protein[prows[notNA], pcols[i]] +
         w2 * protein2[prows[notNA], pcols[i]]
-    
+
+    ## if observed in one but not the other
+    protConsensus[prows[p1NA], pcols[i]] <- protein2[prows[p1NA], pcols[i]]
+    protConsensus[prows[p2NA], pcols[i]] <- protein[prows[p2NA], pcols[i]]
 }
 
-pcm1scores <- getZscores(protConsensus[prows, pcols], mrna[prows, pcols])
+## TODO
+pcm1scores <- getZscores(protConsensus[prows, pcols]*NAMask, mrna[prows, pcols])
 pcm1cor <- pcm1scores$pop.cor
-pcm2scores <- getZscores(protConsensus[prows, pcols], mrna2[prows, pcols])
+pcm2scores <- getZscores(protConsensus[prows, pcols]*NAMask, mrna2[prows, pcols])
 pcm2cor <- pcm2scores$pop.cor
 
 
@@ -505,7 +519,7 @@ dev.off()
 
 #######################################################
 ## Write complete consensus dataset to file, 
-## include genes missing in one datset but not the other
+## include genes or tissues missing in one datset but not the other
 #######################################################
 
 protConsensus <- rbind(protConsensus,
@@ -515,6 +529,22 @@ protConsensus <- rbind(protConsensus,
                                         rownames(protConsensus)), pcols])
 otherCols <- setdiff(union(colnames(protein), colnames(protein2)),
                      pcols)
+
+## Add tissues that were in one dataset but not the other
+## for data set with more coverage
+protConsensus <- cbind(protConsensus, matrix(NA,
+                                             nrow=nrow(protConsensus),
+                                             ncol=length(otherCols),
+                                             dimnames=list(
+                                                 rownames(protConsensus),
+                                                 otherCols)))
+protConsensus[rownames(protein), setdiff(colnames(protein), pcols)] <-
+    protein[rownames(protein), setdiff(colnames(protein), pcols)]
+protConsensus[rownames(protein2), setdiff(colnames(protein2), pcols)] <-
+    protein2[rownames(protein2), setdiff(colnames(protein2), pcols)]
+
+
+write.csv(protConsensus, file="data/protein_consensus.csv")
 
 #######################################################
 ## Compute "MSE" relative to validation data.
@@ -551,22 +581,54 @@ diffPC <- scale(
     scale=FALSE)
 mseConsensus <- sum(diffPC^2, na.rm=TRUE) / length(diffPC)
 
-barplot(c(msep1, msep2, mseConsensus))
+errorMat <- rbind(c(msep1, msep2, mseConsensus),
+                  c(median(abs(diffP1)),
+                    median(abs(diffP2)),
+                    median(abs(diffPC))),
+                  c(sum(!is.na(protein)),
+                    sum(!is.na(protein2)),
+                    sum(!is.na(protConsensus))))
 
-## Add tissues that were in one dataset but not the other
-## for data set with more coverage
-protConsensus <- cbind(protConsensus, matrix(NA,
-                                             nrow=nrow(protConsensus),
-                                             ncol=length(otherCols),
-                                             dimnames=list(
-                                                 rownames(protConsensus),
-                                                 otherCols)))
-protConsensus[rownames(protein), setdiff(colnames(protein), pcols)] <-
-    protein[rownames(protein), setdiff(colnames(protein), pcols)]
-protConsensus[rownames(protein2), setdiff(colnames(protein2), pcols)] <-
-    protein2[rownames(protein2), setdiff(colnames(protein2), pcols)]
+colnames(errorMat) <- c(protnm1, protnm2, "Consensus")
+rownames(errorMat) <- c("MSE", "MAD", "Coverage")
+xtable(errorMat)
 
-write.csv(protConsensus, file="data/protein_consensus.csv")
+## Show improvement is significant
+
+## Bootstrap interval for MSE improvement over Kim dataset
+quantile(sapply(1:1000, function(x) {
+    idx <- sample(length(diffPC), replace=TRUE)
+    mean(diffPC[idx]^2) - mean(diffP2[idx]^2)
+}), c(0.025, 0.975))
+
+## Bootstrap interval for MAD improvement over Kim dataset
+quantile(sapply(1:1000, function(x) {
+    idx <- sample(length(diffPC), replace=TRUE)
+    median(abs(diffPC[idx])) - median(abs(diffP2[idx]))
+}), c(0.025, 0.975))
+
+
+## Compare MSE by tissue
+for(tis in pvCols) {
+    print(tis)
+    cgTis <- which(!is.na(protein[pvRows, tis]) & !is.na(protein2[pvRows, tis]) & !is.na(protVal[pvRows, tis]))
+
+    diffP2 <- scale(
+        as.vector(protein2[pvRows, tis][cgTis]) -
+        as.vector(unlist(protVal[pvRows, tis]))[cgTis],
+        scale=FALSE)
+    
+    print(sum(diffP2^2, na.rm=TRUE) / length(diffP2))
+
+    diffPC <- scale(
+        as.vector(protConsensus[pvRows, tis][cgTis]) -
+        as.vector(unlist(protVal[pvRows, tis]))[cgTis],
+        scale=FALSE)
+    print(sum(diffPC^2, na.rm=TRUE) / length(diffPC))
+    
+}
+
+
 
 #######################################################
 ## Figure 2e: R^2 vs reliability for empirical mrna/prot cor= 0.29

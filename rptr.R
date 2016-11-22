@@ -64,7 +64,7 @@ for(i in 1:ncol(wilhelmTM)) {
 }
 rownames(rptrAllTable) <- sapply(colnames(wilhelmTM), function(x) strFormat(x))
 colnames(rptrAllTable) <- c("Estimate", "Lower", "Upper")
-print(xtable(rptrAllTable))
+print(xtable(t(rptrAllTable)))
 
 ## Regulation mat terms to keep:
 
