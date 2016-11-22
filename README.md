@@ -7,6 +7,6 @@ Repository for study on PTR across human Tissues (Franks et al. 2016)
 
 - rPTR comparisons between Kim and Wilhelm are evaluted in **rptr.r**
 
-All data is in the data/ folder.
+- Raw data is normalized using code in **preprocess_\*.R** files
 
 
