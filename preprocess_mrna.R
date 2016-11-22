@@ -5,7 +5,7 @@ library(magrittr)
 ## Illumina data
 ######################################
 
-illumina <- read.table("~/Dropbox/NatureCommentData/Illumina/Illumina_FPKM_allsamples.txt", header=TRUE, sep="\t", row.names=1)
+illumina <- read.table("data/Illumina/Illumina_FPKM_allsamples.txt", header=TRUE, sep="\t", row.names=1)
 illumina[illumina==0] <- NA
 illumina <- log10(illumina)
 
@@ -68,7 +68,7 @@ write.csv(illumina_split2, "data/mrna_illumina_split2.csv", quote=FALSE)
 ## ProteinAtlas data
 ######################################
 
-pa <- read.table("~/Dropbox/NatureCommentData/ProteinAtlas/transcript_rna_tissue.tsv", sep="\t", header=TRUE)
+pa <- read.table("data/ProteinAtlas/transcript_rna_tissue.tsv", sep="\t", header=TRUE)
 
 pa_agg <- aggregate(pa[, -(1:2)], by=list(pa[, 1]), function(x) sum(x, na.rm=T))
 pa_agg[pa_agg==0] <- NA
@@ -141,7 +141,7 @@ write.csv(pa_agg, "data/mrna_pa.csv", quote=FALSE)
 ## MCP data
 ######################################
 
-mcp <- read.csv("~/Dropbox/NatureCommentData/MCP/mcp.M113.csv", row.names=1)
+mcp <- read.csv("data/MCP/mcp.M113.csv", row.names=1)
 mcp <- mcp[, -ncol(mcp)]
 mcp[mcp==0] <- NA
 mcp <- log10(mcp)
