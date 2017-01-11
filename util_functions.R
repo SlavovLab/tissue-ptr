@@ -86,6 +86,8 @@ strFormat <- function(x) {
 fisher.transform <- function(r){ 1/2*log((1+r)/(1-r)) }
 
 getZscores <- function(mat1, mat2, min.pairs=4){
+
+
     ## Remove rows which show no variation or are all NA
     sd.mat1 <- apply(mat1, 1, function(x) sd(x,na.rm=TRUE))
     sd.mat2 <- apply(mat2, 1, function(x) sd(x,na.rm=TRUE))
@@ -188,7 +190,36 @@ find_go_groups <- function(z.scores, fdr.thresh, within.cors, sd.mrnas, sd.prots
     table
 }
 
+## Create RData files with gene names GO association mappings
+if(FALSE) {
 
+    tab <- read.csv("mart_export.txt",header=TRUE,stringsAsFactors=FALSE)
+    save(tab, file="gene_names.RData")
+
+    assoc.tab <- read.table("gene_association.goa_human",
+                            comment.char="!", sep="\t",
+                            stringsAsFactors=FALSE, quote = "")
+    protein <- as.matrix(read.csv("protein.csv", row.names=1))
+    assoc.tab <- assoc.tab[assoc.tab[, 3] %in% e2n(rownames(protein)),]
+
+
+    group2proteins <- list()
+    protein2groups <- list()
+    for(prot in rownames(protein)){
+        nm <- e2n(prot)
+        indices <- which(assoc.tab[,3]%in%nm)
+        protein2groups[[nm]] <- unique(assoc.tab[indices,5])
+        print(prot)
+    }
+    for(group in allGroups){
+        indices <- which(assoc.tab[,5]%in%group)
+        group2proteins[[group]] <- unique(assoc.tab[indices,3])
+        print(group)
+    }
+
+    save(assoc.tab, group2proteins, protein2groups, file="associations.RData")
+
+}
                                   
 
 
