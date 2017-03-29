@@ -1,11 +1,13 @@
 rm(list=ls())
 library(magrittr)
 
+rawDataDir <- "~/Dropbox/tissue-ptr data/"
+
 ######################################
 ## Illumina data
 ######################################
 
-illumina <- read.table("data/Illumina/Illumina_FPKM_allsamples.txt", header=TRUE, sep="\t", row.names=1)
+illumina <- read.table(paste0(rawDataDir, "Illumina/Illumina_FPKM_allsamples.txt"), header=TRUE, sep="\t", row.names=1)
 illumina[illumina==0] <- NA
 illumina <- log10(illumina)
 
@@ -39,7 +41,7 @@ split1 <- unlist(sapply(unique(tissues), function(tissue) {
 
     len <- sum(tissues==tissue)
     (1:len) <= len/2
-
+p
 }))
 split2 <- !split1
 
@@ -68,7 +70,8 @@ write.csv(illumina_split2, "data/mrna_illumina_split2.csv", quote=FALSE)
 ## ProteinAtlas data
 ######################################
 
-pa <- read.table("data/ProteinAtlas/transcript_rna_tissue.tsv", sep="\t", header=TRUE)
+pa <- read.table(paste0(rawDataDir, "ProteinAtlas/transcript_rna_tissue.tsv"),
+                 sep="\t", header=TRUE)
 
 pa_agg <- aggregate(pa[, -(1:2)], by=list(pa[, 1]), function(x) sum(x, na.rm=T))
 pa_agg[pa_agg==0] <- NA
@@ -85,7 +88,7 @@ tissues <- strsplit(cnms, split="\\.|_", fixed=FALSE) %>%
 ## normalize mrna's against mrna[,1]
 for(i in 2:ncol(pa_agg)){
 
-    pa_agg[,i] <- pa_agg[,i] + median( pa_agg[,1] - pa_agg[,i], na.rm=TRUE)
+    pa_agg[,i] <- pa_agg[,i] + median( pa_agg[, 1] - pa_agg[, i], na.rm=TRUE)
 
 }
 
@@ -136,21 +139,3 @@ pa_split2 <- pa_split2[, order(colnames(pa_split2))]
 write.csv(pa_split1, "data/mrna_pa_split1.csv", quote=FALSE)
 write.csv(pa_split2, "data/mrna_pa_split2.csv", quote=FALSE)
 write.csv(pa_agg, "data/mrna_pa.csv", quote=FALSE)
-
-######################################
-## MCP data
-######################################
-
-mcp <- read.csv("data/MCP/mcp.M113.csv", row.names=1)
-mcp <- mcp[, -ncol(mcp)]
-mcp[mcp==0] <- NA
-mcp <- log10(mcp)
-
-## normalize mrna's against mrna[,1]
-for(i in 2:ncol(mcp)){
-
-    mcp[,i] <- mcp[,i] + median( mcp[,1] - mcp[,i], na.rm=TRUE)
-
-}
-
-write.csv(mcp, "data/mrna_mcp.csv", quote=FALSE)
