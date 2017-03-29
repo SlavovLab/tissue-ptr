@@ -5,11 +5,15 @@ load("matrix-Kim-illumina.RData")
 kimTM <- transformed.mat
 kimCG <- clustered.groups
 kimGo <- unrefined.mat
+kimMeanGroups <- mean.groups
+kimSigGroups <- significant.groups
 
 load("matrix-Wilhelm-pa.RData")
 wilhelmTM <- transformed.mat
 wilhelmCG <- clustered.groups
 wilhelmGo <- unrefined.mat
+wilhelmMeanGroups <- mean.groups
+wilhelmSigGroups <- significant.groups
 
 wilhelmCGorig <- wilhelmCG
 kimCGorig <- kimCG
@@ -27,6 +31,8 @@ pdf("Figs/rptr-corrs.pdf")
 par(mfrow=c(4, 3), oma=c(0, 1, 0, 0))
 for(i in 1:ncol(wilhelmCG)) {
     tissue <- colnames(wilhelmCG)[i]
+    print(tissue)
+    
     cr <- cor.test(wilhelmCG[, i], kimCG[, i], use="pairwise.complete.obs")
 
     par(mar=c(2, 2, 2, 2))
@@ -40,12 +46,25 @@ for(i in 1:ncol(wilhelmCG)) {
     legend("bottomright", sprintf("Cor = %s", format(cr$estimate, digits=2)),
            text.col=textcol, box.lty=0, text.font=2, cex=1.4)
     box()
+
+    ## How many sign errors?
+    scaledWilhelm <- scale(wilhelmCG[, i], center=TRUE, scale=FALSE)
+    scaledKim <- scale(kimCG[, i], center=TRUE, scale=FALSE)
+    
+    sgnErrors <- table(sign(scaledWilhelm * scaledKim))
+    print(sgnErrors[1] / sum(sgnErrors))
+
+    sgnTable <- table(as.factor(sign(scaledWilhelm)),
+                      as.factor(sign(scaledKim)),
+                      exclude=0) 
+    print(chisq.test(sgnTable)$p.value)
+    print(binom.test(sgnErrors, alternative="less")$p.value)
 }
 dev.off()
 
 
 ###############
-## All terms
+## All genes
 ###############
 
 rnms <- intersect(rownames(wilhelmTM), rownames(kimTM))
@@ -58,8 +77,17 @@ kimTM[kimTM==Inf] <- NA
 rptrAllTable <- c()
 for(i in 1:ncol(wilhelmTM)) {
     tissue <- colnames(wilhelmTM)[i]
+    print(tissue)
     cr <- cor.test(wilhelmTM[, i], kimTM[, i], use="pairwise.complete.obs")
 
+    ## How many sign errors?
+    sgnErrors <- table(sign(wilhelmTM[, i])*sign(kimTM[, i]))
+    print(sgnErrors[1] / sum(sgnErrors))
+
+    sgnTable <- table(as.factor(sign(wilhelmTM[, i])),
+                      as.factor(sign(kimTM[, i])),
+                      exclude=0) 
+    print(chisq.test(sgnTable)$p.value)
     rptrAllTable <- rbind(rptrAllTable, c(cr$estimate, cr$conf.int[1], cr$conf.int[2]))
 }
 rownames(rptrAllTable) <- sapply(colnames(wilhelmTM), function(x) strFormat(x))
