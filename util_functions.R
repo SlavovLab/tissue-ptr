@@ -9,6 +9,10 @@ tab.mart <- tab.mart[rownames(protein), ]
 go.names <- read.table("Go_names",comment.char="!",sep="\t",stringsAsFactors=FALSE,quote = "")
 rownames(go.names) <- go.names[,1]
 
+getPrettyGOName <- function(goNm) {
+    substr(go.names[match(goNm, go.names[, 1]), 3], 1, 30)
+}
+
 scientific_10 <- function(x) {
   parse(text=paste("10^", log10(x)))
 }
