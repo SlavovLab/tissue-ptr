@@ -1,7 +1,7 @@
 library(plyr)
 load("Rdata/associations.RData")
 
-protein <- as.matrix(read.csv("protein.csv",row.names=1))
+protein <- as.matrix(read.csv("data/protein_consensus.csv",row.names=1))
 tab.mart <- read.csv("mart_export.txt",header=TRUE,stringsAsFactors=FALSE)
 tab.mart <- tab.mart[!duplicated(tab.mart[,1]),]
 rownames(tab.mart) <- tab.mart[,1]
