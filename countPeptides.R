@@ -25,9 +25,9 @@ for(tissue in tissues){
     if(tissue %in% colnames(protein)) {
         protWilhelm <- sum(!is.na(protein[, tissue]))
     } else {
-        protWilhem <- 0
+        protWilhelm <- 0
     }
-
+    
     if(tissue %in% colnames(protein2)) {
         protKim <- sum(!is.na(protein2[, tissue]))
     } else {
