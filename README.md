@@ -6,7 +6,9 @@ Repository for study on PTR across human Tissues (Franks et al. 2016)
 - Code for the GO analysis is in **analysis.R**
 
 - rPTR comparisons between Kim and Wilhelm are evaluted in **rptr.r**
+- Most relevant and necessary data (excluded the "raw" preprocessed data) is in the data/ dir.
+- Raw data is available here: https://www.dropbox.com/sh/4nzzqtsoixsh5gm/AAAMtqZ9qU8F1ggyaIM9prqKa?dl=0
+- Raw data is normalized using code in **preprocess_\*.R** files
 
-- Raw data (available at TODO) is normalized using code in **preprocess_\*.R** files
 
 
