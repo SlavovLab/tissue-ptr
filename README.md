@@ -1,10 +1,10 @@
 # Post-transcriptional regulation across human tissues
 
 
-* [Website](http://slavovlab.net/2016_PTR/index.html)
-* [Franks et al., PLOS Computational Biology, 2017](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1005535)
+This repository contains code for analyzing post-transcriptional regulation across human tissues based on mRNA and protein datasets. The analysis was reported by [Franks et al., PLOS Computational Biology (2017)](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1005535). The [website](http://slavovlab.net/2016_PTR/index.html) of the paper contains additional resources.
 
-<img src="http://slavovlab.net/2016_PTR/Simson's_Paradox_in_Gene_regulation.png" width="70%">
+
+<img src="http://slavovlab.net/2016_PTR/Simson's_Paradox_in_Gene_regulation.png" width="50%">
 
 
 ## Reproducing the analysis reported by [Franks et al., 2017](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1005535)
@@ -15,3 +15,6 @@
 - Most relevant and necessary data (excluded the "raw" preprocessed data) is in the data/ dir.
 - Raw data are available here: https://www.dropbox.com/sh/4nzzqtsoixsh5gm/AAAMtqZ9qU8F1ggyaIM9prqKa?dl=0
 - Raw data are normalized using code in **preprocess_\*.R** files
+
+## Correspondence
+Questions can be directed to [Slavov Lab](http://slavovlab.net/)  
